@@ -1,0 +1,22 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+      - ./index.html:/app/index.html
+      - ./vite.config.ts:/app/vite.config.ts
+    # No profiles key = runs with plain `docker compose up`
+
+  preview:
+    build:
+      context: .
+      dockerfile: Dockerfile.preview
+    ports:
+      - "4173:4173"
+    profiles:
+      - preview
