@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../lib/types'
+import { requireRole } from '../middleware/auth'
 import type { Game, Group, Participant, Pick, Player, Team, Round } from '../../../src/types'
 const data = new Hono<HonoEnv>()
 
@@ -37,7 +38,7 @@ data.get('/groups', async (c) => {
   return c.json(results)
 })
 
-data.post('/groups', async (c) => {
+data.post('/groups', requireRole('admin'), async (c) => {
   const { name } = await c.req.json<{ name: string }>()
   if (!name?.trim()) return c.json({ error: 'name required' }, 400)
   const row = await c.env.DB.prepare(
@@ -46,7 +47,7 @@ data.post('/groups', async (c) => {
   return c.json({ ...row, teamCount: 0 } as Group, 201)
 })
 
-data.delete('/groups/:id', async (c) => {
+data.delete('/groups/:id', requireRole('admin'), async (c) => {
   const id = Number(c.req.param('id'))
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM teams WHERE group_id = ?').bind(id),
@@ -65,7 +66,7 @@ data.get('/groups/:groupId/teams', async (c) => {
   return c.json(results)
 })
 
-data.post('/groups/:groupId/teams', async (c) => {
+data.post('/groups/:groupId/teams', requireRole('admin'), async (c) => {
   const groupId = Number(c.req.param('groupId'))
   const { name } = await c.req.json<{ name: string }>()
   if (!name?.trim()) return c.json({ error: 'name required' }, 400)
@@ -75,7 +76,7 @@ data.post('/groups/:groupId/teams', async (c) => {
   return c.json(row, 201)
 })
 
-data.delete('/teams/:id', async (c) => {
+data.delete('/teams/:id', requireRole('admin'), async (c) => {
   const id = Number(c.req.param('id'))
   await c.env.DB.prepare('DELETE FROM teams WHERE id = ?').bind(id).run()
   return new Response(null, { status: 204 })
@@ -90,7 +91,7 @@ data.get('/players', async (c) => {
   return c.json(results)
 })
 
-data.post('/players', async (c) => {
+data.post('/players', requireRole('admin', 'manager'), async (c) => {
   const { name } = await c.req.json<{ name: string }>()
   if (!name?.trim()) return c.json({ error: 'name required' }, 400)
   const row = await c.env.DB.prepare(
@@ -99,7 +100,7 @@ data.post('/players', async (c) => {
   return c.json(row, 201)
 })
 
-data.delete('/players/:id', async (c) => {
+data.delete('/players/:id', requireRole('admin', 'manager'), async (c) => {
   const id = Number(c.req.param('id'))
   await c.env.DB.prepare('DELETE FROM players WHERE id = ?').bind(id).run()
   return new Response(null, { status: 204 })

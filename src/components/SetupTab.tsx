@@ -2,8 +2,10 @@ import { useEffect, useState, useCallback } from 'react';
 import type { Group, Player, Team } from '../types';
 import * as db from '../db';
 import InviteQR from './auth/InviteQR';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function SetupTab() {
+  const { isAdmin } = useAuth();
   const [groups, setGroups] = useState<Group[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [teamsByGroup, setTeamsByGroup] = useState<Record<number, Team[]>>({});
@@ -168,19 +170,21 @@ export default function SetupTab() {
         <div className="card">
           <h2 className="card-title">Groups &amp; Teams</h2>
 
-          <form onSubmit={handleAddGroup} className="form-row">
-            <div className="form-group">
-              <input
-                type="text"
-                placeholder="Group name"
-                value={newGroupName}
-                onChange={e => setNewGroupName(e.target.value)}
-              />
-            </div>
-            <button type="submit" className="btn btn-primary" disabled={!newGroupName.trim()}>
-              Add Group
-            </button>
-          </form>
+          {isAdmin && (
+            <form onSubmit={handleAddGroup} className="form-row">
+              <div className="form-group">
+                <input
+                  type="text"
+                  placeholder="Group name"
+                  value={newGroupName}
+                  onChange={e => setNewGroupName(e.target.value)}
+                />
+              </div>
+              <button type="submit" className="btn btn-primary" disabled={!newGroupName.trim()}>
+                Add Group
+              </button>
+            </form>
+          )}
 
           <div className="mt-16">
             {groups.length === 0 ? (
@@ -200,7 +204,7 @@ export default function SetupTab() {
                         <span style={{ fontWeight: 600 }}>{group.name}</span>
                         <span className="text-muted" style={{ fontSize: 13 }}>({group.teamCount} teams)</span>
                       </button>
-                      <button className="btn-icon" onClick={() => handleDeleteGroup(group.id)} title="Delete group">✕</button>
+                      {isAdmin && <button className="btn-icon" onClick={() => handleDeleteGroup(group.id)} title="Delete group">✕</button>}
                     </div>
 
                     {expanded && (
@@ -208,31 +212,33 @@ export default function SetupTab() {
                         {teams.map(t => (
                           <div key={t.id} className="list-item">
                             <span className="text-muted">{t.name}</span>
-                            <button className="btn-icon btn-sm" onClick={() => handleDeleteTeam(t.id, group.id)} title="Delete team">✕</button>
+                            {isAdmin && <button className="btn-icon btn-sm" onClick={() => handleDeleteTeam(t.id, group.id)} title="Delete team">✕</button>}
                           </div>
                         ))}
 
-                        <form
-                          onSubmit={e => handleAddTeam(e, group.id)}
-                          className="form-row mt-8"
-                          style={{ paddingRight: 4 }}
-                        >
-                          <div className="form-group">
-                            <input
-                              type="text"
-                              placeholder="Team name"
-                              value={newTeamInputs[group.id] ?? ''}
-                              onChange={e => setNewTeamInputs(prev => ({ ...prev, [group.id]: e.target.value }))}
-                            />
-                          </div>
-                          <button
-                            type="submit"
-                            className="btn btn-secondary btn-sm"
-                            disabled={!(newTeamInputs[group.id] ?? '').trim()}
+                        {isAdmin && (
+                          <form
+                            onSubmit={e => handleAddTeam(e, group.id)}
+                            className="form-row mt-8"
+                            style={{ paddingRight: 4 }}
                           >
-                            Add Team
-                          </button>
-                        </form>
+                            <div className="form-group">
+                              <input
+                                type="text"
+                                placeholder="Team name"
+                                value={newTeamInputs[group.id] ?? ''}
+                                onChange={e => setNewTeamInputs(prev => ({ ...prev, [group.id]: e.target.value }))}
+                              />
+                            </div>
+                            <button
+                              type="submit"
+                              className="btn btn-secondary btn-sm"
+                              disabled={!(newTeamInputs[group.id] ?? '').trim()}
+                            >
+                              Add Team
+                            </button>
+                          </form>
+                        )}
                       </div>
                     )}
                   </div>
