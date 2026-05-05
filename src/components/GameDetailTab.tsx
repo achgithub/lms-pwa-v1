@@ -3,6 +3,7 @@ import type { Game, Participant, Round, Pick, Team } from '../types';
 import type { PickResult } from '../types';
 import * as db from '../db';
 import * as logic from '../gameLogic';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Props {
   gameId: number;
@@ -29,6 +30,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
   const [addingPlayer, setAddingPlayer] = useState(false);
 
   const [busy, setBusy] = useState(false);
+  const { user, isManager } = useAuth();
 
   const load = useCallback(async () => {
     try {
@@ -59,6 +61,8 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
 
   const openRound = rounds.find(r => r.roundNumber === game.currentRound && r.status === 'open');
   const activeParticipants = participants.filter(p => p.isActive);
+  // Players only see and interact with their own row
+  const visibleParticipants = isManager ? activeParticipants : activeParticipants.filter(p => p.playerName === user?.name);
   const currentRoundPicks = picks.filter(p => openRound && p.roundId === openRound.id);
 
   // Determine phase: 'assign' = assigning picks, 'results' = entering results
@@ -309,7 +313,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {activeParticipants.map(p => {
+                    {visibleParticipants.map(p => {
                       const existingPick = currentRoundPicks.find(cp => cp.playerName === p.playerName);
                       const available = logic.availableTeams(p.playerName, teams, picks, rounds);
                       const selectedId = pendingPicks[p.playerName] ?? '';

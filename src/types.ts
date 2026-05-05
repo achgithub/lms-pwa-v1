@@ -1,3 +1,11 @@
+export type Role = 'admin' | 'manager' | 'player'
+
+export interface AuthUser {
+  id: number;
+  name: string;
+  role: Role;
+}
+
 export interface Group {
   id: number;
   name: string;

@@ -72,6 +72,34 @@ body {
   color: var(--text-muted);
 }
 
+/* ── Auth pages ──────────────────────────────────────────────────────────── */
+
+.auth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: 24px 16px;
+  background: var(--bg);
+}
+
+.auth-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px 28px;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: var(--shadow);
+}
+
+.btn-full {
+  width: 100%;
+  justify-content: center;
+}
+
+/* ── Offline ─────────────────────────────────────────────────────────────── */
+
 .offline-badge {
   margin-left: auto;
   font-size: 11px;

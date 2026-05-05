@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { Group, Player, Team } from '../types';
 import * as db from '../db';
+import InviteQR from './auth/InviteQR';
 
 export default function SetupTab() {
   const [groups, setGroups] = useState<Group[]>([]);
@@ -124,6 +125,11 @@ export default function SetupTab() {
   return (
     <div>
       {error && <div className="alert alert-error">{error}</div>}
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h2 className="card-title">Invite</h2>
+        <InviteQR />
+      </div>
 
       <div className="two-col">
         {/* ── Player Pool ── */}
