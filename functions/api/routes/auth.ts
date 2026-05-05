@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { sign } from 'hono/jwt'
+import { signJWT } from '../lib/jwt'
 import { hashPasscode, randomHex } from '../lib/crypto'
 import { authMiddleware } from '../middleware/auth'
 import type { HonoEnv } from '../lib/types'
@@ -32,7 +32,7 @@ auth.post('/setup', async (c) => {
      RETURNING id, name, role`
   ).bind(body.name.trim(), hash, salt).first<{ id: number; name: string; role: string }>()
 
-  const token = await sign({ sub: user!.id, name: user!.name, role: user!.role, exp: jwtExp() }, c.env.JWT_SECRET)
+  const token = await signJWT({ sub: user!.id, name: user!.name, role: user!.role, exp: jwtExp() }, c.env.JWT_SECRET)
   return c.json({ token, user })
 })
 
@@ -50,7 +50,7 @@ auth.post('/login', async (c) => {
   const hash = await hashPasscode(body.passcode, user.passcode_salt)
   if (hash !== user.passcode_hash) return c.json({ error: 'Invalid name or passcode' }, 401)
 
-  const token = await sign({ sub: user.id, name: user.name, role: user.role, exp: jwtExp() }, c.env.JWT_SECRET)
+  const token = await signJWT({ sub: user.id, name: user.name, role: user.role, exp: jwtExp() }, c.env.JWT_SECRET)
   return c.json({ token, user: { id: user.id, name: user.name, role: user.role } })
 })
 
@@ -102,7 +102,7 @@ auth.post('/register', async (c) => {
   await c.env.DB.prepare(`UPDATE invite_tokens SET used_at = ? WHERE id = ?`)
     .bind(new Date().toISOString(), invite.id).run()
 
-  const token = await sign({ sub: user!.id, name: user!.name, role: user!.role, exp: jwtExp() }, c.env.JWT_SECRET)
+  const token = await signJWT({ sub: user!.id, name: user!.name, role: user!.role, exp: jwtExp() }, c.env.JWT_SECRET)
   return c.json({ token, user })
 })
 

@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { handle } from 'hono/cloudflare-pages'
 import type { HonoEnv } from './lib/types'
 import { authMiddleware } from './middleware/auth'
-import { verify } from 'hono/jwt'
+import { verifyJWT } from './lib/jwt'
 import authRoutes from './routes/auth'
 import dataRoutes from './routes/data'
 
@@ -19,7 +19,7 @@ app.get('/debug/env', async (c) => {
   const header = c.req.header('Authorization')
   if (header?.startsWith('Bearer ')) {
     try {
-      const payload = await verify(header.slice(7), c.env.JWT_SECRET)
+      const payload = await verifyJWT(header.slice(7), c.env.JWT_SECRET)
       info.tokenVerify = 'ok'
       info.tokenPayload = payload
     } catch (e) {
