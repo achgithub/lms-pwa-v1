@@ -2,17 +2,35 @@ import { Hono } from 'hono'
 import { handle } from 'hono/cloudflare-pages'
 import type { HonoEnv } from './lib/types'
 import { authMiddleware } from './middleware/auth'
+import { verify } from 'hono/jwt'
 import authRoutes from './routes/auth'
 import dataRoutes from './routes/data'
 
 const app = new Hono<HonoEnv>().basePath('/api')
 
-// Temp debug endpoint — remove after confirming env vars
-app.get('/debug/env', (c) => c.json({
-  hasJwtSecret: !!c.env.JWT_SECRET,
-  jwtSecretLength: c.env.JWT_SECRET?.length ?? 0,
-  hasDb: !!c.env.DB,
-}))
+// Temp debug endpoint — remove after diagnosis
+app.get('/debug/env', async (c) => {
+  const info: Record<string, unknown> = {
+    hasJwtSecret: !!c.env.JWT_SECRET,
+    jwtSecretLength: c.env.JWT_SECRET?.length ?? 0,
+    hasDb: !!c.env.DB,
+    path: c.req.path,
+  }
+  const header = c.req.header('Authorization')
+  if (header?.startsWith('Bearer ')) {
+    try {
+      const payload = await verify(header.slice(7), c.env.JWT_SECRET)
+      info.tokenVerify = 'ok'
+      info.tokenPayload = payload
+    } catch (e) {
+      info.tokenVerify = 'failed'
+      info.tokenError = String(e)
+    }
+  } else {
+    info.tokenVerify = 'no token provided'
+  }
+  return c.json(info)
+})
 
 // Public — no JWT required
 app.route('/auth', authRoutes)
