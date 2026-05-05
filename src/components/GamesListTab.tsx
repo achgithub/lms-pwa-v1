@@ -1,12 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { Game, Group, Player } from '../types';
 import * as db from '../db';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Props {
   onSelectGame: (id: number) => void;
 }
 
 export default function GamesListTab({ onSelectGame }: Props) {
+  const { isPlayer } = useAuth();
   const [games, setGames] = useState<Game[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -26,18 +28,30 @@ export default function GamesListTab({ onSelectGame }: Props) {
 
   const load = useCallback(async () => {
     try {
-      const [g, gr, p] = await Promise.all([db.getGames(), db.getGroups(), db.getPlayers()]);
-      setGames(g);
-      setGroups(gr);
-      setPlayers(p);
+      if (isPlayer) {
+        const g = await db.getGames();
+        setGames(g);
+      } else {
+        const [g, gr, p] = await Promise.all([db.getGames(), db.getGroups(), db.getPlayers()]);
+        setGames(g);
+        setGroups(gr);
+        setPlayers(p);
+      }
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isPlayer]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Players with exactly one game skip the list and go straight in
+  useEffect(() => {
+    if (isPlayer && !loading && games.length === 1) {
+      onSelectGame(games[0].id);
+    }
+  }, [isPlayer, loading, games, onSelectGame]);
 
   function togglePlayer(name: string) {
     setFormSelectedPlayers(prev => {
@@ -91,6 +105,42 @@ export default function GamesListTab({ onSelectGame }: Props) {
   }
 
   if (loading) return <div className="empty-state"><span className="spinner" /></div>;
+
+  // Player view — simple game picker (auto-redirect handled by useEffect for 1 game)
+  if (isPlayer) {
+    return (
+      <div>
+        {error && <div className="alert alert-error">{error}</div>}
+        <div className="section-header">
+          <h2 className="section-title">Your Games</h2>
+        </div>
+        {games.length === 0 ? (
+          <div className="card">
+            <p className="empty-state">You haven't been added to any games yet.</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {games.map(game => (
+              <div key={game.id} className="card" style={{ cursor: 'pointer' }} onClick={() => onSelectGame(game.id)}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 16 }}>{game.name}</div>
+                    <div className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>{game.groupName} · Round {game.currentRound}</div>
+                  </div>
+                  <span className={`badge badge-${game.status}`}>{game.status}</span>
+                </div>
+                {game.winnerName && (
+                  <div style={{ marginTop: 8, fontSize: 13, color: 'var(--warning)' }}>
+                    Winner: {game.winnerName}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
