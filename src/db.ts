@@ -1,17 +1,10 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { api } from './api/client';
 import type {
-  Group,
-  Team,
-  Player,
-  Game,
-  Participant,
-  Round,
-  Pick,
-  SyncData,
+  Group, Team, Player, Game, Participant, Round, Pick, SyncData, GameDetail,
 } from './types';
 
-// ── Schema ──────────────────────────────────────────────────────────────────
+// ── Schema ───────────────────────────────────────────────────────────────────
 
 interface LmsDB extends DBSchema {
   groups:       { key: number; value: Group };
@@ -25,45 +18,28 @@ interface LmsDB extends DBSchema {
 
 let _db: Promise<IDBPDatabase<LmsDB>> | null = null;
 
-function db(): Promise<IDBPDatabase<LmsDB>> {
+function idb(): Promise<IDBPDatabase<LmsDB>> {
   if (!_db) {
     _db = openDB<LmsDB>('lms-db', 2, {
       upgrade(conn, oldVersion) {
         const stores = ['groups', 'teams', 'players', 'games', 'participants', 'rounds', 'picks'] as const;
-
-        if (oldVersion < 1) {
-          conn.createObjectStore('groups', { keyPath: 'id', autoIncrement: true });
-          const teams = conn.createObjectStore('teams', { keyPath: 'id', autoIncrement: true });
-          teams.createIndex('by-group', 'groupId');
-          conn.createObjectStore('players', { keyPath: 'id', autoIncrement: true });
-          conn.createObjectStore('games', { keyPath: 'id', autoIncrement: true });
-          const parts = conn.createObjectStore('participants', { keyPath: 'id', autoIncrement: true });
-          parts.createIndex('by-game', 'gameId');
-          const rounds = conn.createObjectStore('rounds', { keyPath: 'id', autoIncrement: true });
-          rounds.createIndex('by-game', 'gameId');
-          const picks = conn.createObjectStore('picks', { keyPath: 'id', autoIncrement: true });
-          picks.createIndex('by-game', 'gameId');
-          picks.createIndex('by-round', 'roundId');
-        }
-
         if (oldVersion < 2) {
-          // Clear all stores — D1 is now the source of truth, sync will repopulate
           for (const s of stores) {
             if (conn.objectStoreNames.contains(s)) conn.deleteObjectStore(s);
           }
-          conn.createObjectStore('groups', { keyPath: 'id', autoIncrement: true });
-          const teams = conn.createObjectStore('teams', { keyPath: 'id', autoIncrement: true });
-          teams.createIndex('by-group', 'groupId');
-          conn.createObjectStore('players', { keyPath: 'id', autoIncrement: true });
-          conn.createObjectStore('games', { keyPath: 'id', autoIncrement: true });
-          const parts = conn.createObjectStore('participants', { keyPath: 'id', autoIncrement: true });
-          parts.createIndex('by-game', 'gameId');
-          const rounds = conn.createObjectStore('rounds', { keyPath: 'id', autoIncrement: true });
-          rounds.createIndex('by-game', 'gameId');
-          const picks = conn.createObjectStore('picks', { keyPath: 'id', autoIncrement: true });
-          picks.createIndex('by-game', 'gameId');
-          picks.createIndex('by-round', 'roundId');
         }
+        conn.createObjectStore('groups', { keyPath: 'id', autoIncrement: true });
+        const teams = conn.createObjectStore('teams', { keyPath: 'id', autoIncrement: true });
+        teams.createIndex('by-group', 'groupId');
+        conn.createObjectStore('players', { keyPath: 'id', autoIncrement: true });
+        conn.createObjectStore('games', { keyPath: 'id', autoIncrement: true });
+        const parts = conn.createObjectStore('participants', { keyPath: 'id', autoIncrement: true });
+        parts.createIndex('by-game', 'gameId');
+        const rounds = conn.createObjectStore('rounds', { keyPath: 'id', autoIncrement: true });
+        rounds.createIndex('by-game', 'gameId');
+        const picks = conn.createObjectStore('picks', { keyPath: 'id', autoIncrement: true });
+        picks.createIndex('by-game', 'gameId');
+        picks.createIndex('by-round', 'roundId');
       },
     });
   }
@@ -81,11 +57,10 @@ function requireOnline() {
   if (!navigator.onLine) throw new OfflineError();
 }
 
-// ── Sync ─────────────────────────────────────────────────────────────────────
+// ── Offline sync (populate IDB from API snapshot) ─────────────────────────────
 
-/** Replaces all local IndexedDB data with a fresh snapshot from the API. */
 export async function importSync(data: SyncData): Promise<void> {
-  const conn = await db();
+  const conn = await idb();
   const storeNames = ['groups', 'teams', 'players', 'games', 'participants', 'rounds', 'picks'] as const;
   const tx = conn.transaction(storeNames, 'readwrite');
   for (const s of storeNames) tx.objectStore(s).clear();
@@ -99,23 +74,24 @@ export async function importSync(data: SyncData): Promise<void> {
   await tx.done;
 }
 
-// ── Groups ───────────────────────────────────────────────────────────────────
+// ── Groups ────────────────────────────────────────────────────────────────────
 
 export async function getGroups(): Promise<Group[]> {
-  return (await db()).getAll('groups');
+  if (navigator.onLine) return api.get<Group[]>('/groups');
+  return (await idb()).getAll('groups');
 }
 
 export async function createGroup(name: string): Promise<Group> {
   requireOnline();
   const group = await api.post<Group>('/groups', { name });
-  await (await db()).put('groups', group);
+  await (await idb()).put('groups', group);
   return group;
 }
 
 export async function deleteGroup(id: number): Promise<void> {
   requireOnline();
   await api.delete(`/groups/${id}`);
-  const conn = await db();
+  const conn = await idb();
   const tx = conn.transaction(['groups', 'teams'], 'readwrite');
   const teams = await tx.objectStore('teams').index('by-group').getAll(id);
   await Promise.all([
@@ -125,16 +101,17 @@ export async function deleteGroup(id: number): Promise<void> {
   ]);
 }
 
-// ── Teams ────────────────────────────────────────────────────────────────────
+// ── Teams ─────────────────────────────────────────────────────────────────────
 
 export async function getTeamsByGroup(groupId: number): Promise<Team[]> {
-  return (await db()).getAllFromIndex('teams', 'by-group', groupId);
+  if (navigator.onLine) return api.get<Team[]>(`/groups/${groupId}/teams`);
+  return (await idb()).getAllFromIndex('teams', 'by-group', groupId);
 }
 
 export async function createTeam(groupId: number, name: string): Promise<Team> {
   requireOnline();
   const team = await api.post<Team>(`/groups/${groupId}/teams`, { name });
-  const conn = await db();
+  const conn = await idb();
   const tx = conn.transaction(['teams', 'groups'], 'readwrite');
   await tx.objectStore('teams').put(team);
   const group = await tx.objectStore('groups').get(groupId);
@@ -146,7 +123,7 @@ export async function createTeam(groupId: number, name: string): Promise<Team> {
 export async function deleteTeam(teamId: number, groupId: number): Promise<void> {
   requireOnline();
   await api.delete(`/teams/${teamId}`);
-  const conn = await db();
+  const conn = await idb();
   const tx = conn.transaction(['teams', 'groups'], 'readwrite');
   await tx.objectStore('teams').delete(teamId);
   const group = await tx.objectStore('groups').get(groupId);
@@ -156,33 +133,48 @@ export async function deleteTeam(teamId: number, groupId: number): Promise<void>
   await tx.done;
 }
 
-// ── Players ──────────────────────────────────────────────────────────────────
+// ── Players ───────────────────────────────────────────────────────────────────
 
 export async function getPlayers(): Promise<Player[]> {
-  return (await db()).getAll('players');
+  if (navigator.onLine) return api.get<Player[]>('/players');
+  return (await idb()).getAll('players');
 }
 
 export async function createPlayer(name: string): Promise<Player> {
   requireOnline();
   const player = await api.post<Player>('/players', { name });
-  await (await db()).put('players', player);
+  await (await idb()).put('players', player);
   return player;
 }
 
 export async function deletePlayer(id: number): Promise<void> {
   requireOnline();
   await api.delete(`/players/${id}`);
-  await (await db()).delete('players', id);
+  await (await idb()).delete('players', id);
 }
 
-// ── Games ────────────────────────────────────────────────────────────────────
+// ── Games ─────────────────────────────────────────────────────────────────────
 
 export async function getGames(): Promise<Game[]> {
-  return (await db()).getAll('games');
+  if (navigator.onLine) return api.get<Game[]>('/games');
+  return (await idb()).getAll('games');
 }
 
-export async function getGame(id: number): Promise<Game | undefined> {
-  return (await db()).get('games', id);
+export async function getGameDetail(gameId: number): Promise<GameDetail | null> {
+  if (navigator.onLine) {
+    const detail = await api.get<GameDetail>(`/games/${gameId}`);
+    return detail;
+  }
+  // Offline: assemble from IDB
+  const conn = await idb();
+  const game = await conn.get('games', gameId);
+  if (!game) return null;
+  const [participants, rounds, picks] = await Promise.all([
+    conn.getAllFromIndex('participants', 'by-game', gameId),
+    conn.getAllFromIndex('rounds', 'by-game', gameId),
+    conn.getAllFromIndex('picks', 'by-game', gameId),
+  ]);
+  return { game, participants, rounds, picks };
 }
 
 export interface CreateGameParams {
@@ -198,14 +190,14 @@ export interface CreateGameParams {
 export async function createGame(params: CreateGameParams): Promise<Game> {
   requireOnline();
   const game = await api.post<Game>('/games', params);
-  await (await db()).put('games', game);
+  await (await idb()).put('games', game);
   return game;
 }
 
 export async function deleteGame(id: number): Promise<void> {
   requireOnline();
   await api.delete(`/games/${id}`);
-  const conn = await db();
+  const conn = await idb();
   const tx = conn.transaction(['games', 'participants', 'rounds', 'picks'], 'readwrite');
   const [participants, rounds, picks] = await Promise.all([
     tx.objectStore('participants').index('by-game').getAll(id),
@@ -221,16 +213,12 @@ export async function deleteGame(id: number): Promise<void> {
   ]);
 }
 
-// ── Participants ─────────────────────────────────────────────────────────────
-
-export async function getParticipants(gameId: number): Promise<Participant[]> {
-  return (await db()).getAllFromIndex('participants', 'by-game', gameId);
-}
+// ── Participants ──────────────────────────────────────────────────────────────
 
 export async function addParticipant(gameId: number, playerName: string): Promise<Participant> {
   requireOnline();
   const participant = await api.post<Participant>(`/games/${gameId}/participants`, { playerName });
-  const conn = await db();
+  const conn = await idb();
   const tx = conn.transaction(['participants', 'games'], 'readwrite');
   await tx.objectStore('participants').put(participant);
   const game = await tx.objectStore('games').get(gameId);
@@ -239,36 +227,30 @@ export async function addParticipant(gameId: number, playerName: string): Promis
   return participant;
 }
 
-// ── Rounds ───────────────────────────────────────────────────────────────────
-
-export async function getRounds(gameId: number): Promise<Round[]> {
-  return (await db()).getAllFromIndex('rounds', 'by-game', gameId);
-}
-
-// ── Picks ────────────────────────────────────────────────────────────────────
+// ── Picks ─────────────────────────────────────────────────────────────────────
 
 export async function getPicks(gameId: number): Promise<Pick[]> {
-  return (await db()).getAllFromIndex('picks', 'by-game', gameId);
-}
-
-export async function getPicksByRound(roundId: number): Promise<Pick[]> {
-  return (await db()).getAllFromIndex('picks', 'by-round', roundId);
+  if (navigator.onLine) {
+    const detail = await api.get<GameDetail>(`/games/${gameId}`);
+    return detail.picks;
+  }
+  return (await idb()).getAllFromIndex('picks', 'by-game', gameId);
 }
 
 export async function upsertPick(pick: Omit<Pick, 'id' | 'createdAt'> & { id?: number }): Promise<Pick> {
   requireOnline();
   const saved = await api.put<Pick>('/picks', pick);
-  await (await db()).put('picks', saved);
+  await (await idb()).put('picks', saved);
   return saved;
 }
 
 export async function deletePick(id: number): Promise<void> {
   requireOnline();
   await api.delete(`/picks/${id}`);
-  await (await db()).delete('picks', id);
+  await (await idb()).delete('picks', id);
 }
 
-// ── Round advancement ────────────────────────────────────────────────────────
+// ── Round advancement ─────────────────────────────────────────────────────────
 
 export interface AdvanceRoundParams {
   gameId: number;
@@ -282,8 +264,7 @@ export interface AdvanceRoundParams {
 export async function advanceRound(params: AdvanceRoundParams): Promise<Game> {
   requireOnline();
   const game = await api.post<Game>(`/games/${params.gameId}/advance`, params);
-  // Sync the full game detail into local IDB
-  await _syncGameDetail(params.gameId, game);
+  await (await idb()).put('games', game);
   return game;
 }
 
@@ -297,40 +278,8 @@ export interface RolloverParams {
 export async function rolloverGame(params: RolloverParams): Promise<Game> {
   requireOnline();
   const game = await api.post<Game>(`/games/${params.gameId}/rollover`, params);
-  await _syncGameDetail(params.gameId, game);
+  await (await idb()).put('games', game);
   return game;
-}
-
-/** Fetches full game detail from API and updates local IDB. */
-async function _syncGameDetail(gameId: number, updatedGame: Game): Promise<void> {
-  const conn = await db();
-
-  // Fetch fresh participants, rounds, picks from API
-  const detail = await api.get<{ game: Game; participants: Participant[]; rounds: Round[]; picks: Pick[] }>(
-    `/games/${gameId}`
-  );
-
-  const tx = conn.transaction(['games', 'participants', 'rounds', 'picks'], 'readwrite');
-
-  // Update game
-  await tx.objectStore('games').put(updatedGame);
-
-  // Replace participants, rounds, picks for this game
-  const [oldParts, oldRounds, oldPicks] = await Promise.all([
-    tx.objectStore('participants').index('by-game').getAll(gameId),
-    tx.objectStore('rounds').index('by-game').getAll(gameId),
-    tx.objectStore('picks').index('by-game').getAll(gameId),
-  ]);
-  await Promise.all([
-    ...oldParts.map(p => tx.objectStore('participants').delete(p.id)),
-    ...oldRounds.map(r => tx.objectStore('rounds').delete(r.id)),
-    ...oldPicks.map(p => tx.objectStore('picks').delete(p.id)),
-  ]);
-  for (const r of detail.participants) tx.objectStore('participants').put(r);
-  for (const r of detail.rounds)       tx.objectStore('rounds').put(r);
-  for (const r of detail.picks)        tx.objectStore('picks').put(r);
-
-  await tx.done;
 }
 
 // ── Export / Import (local backup) ───────────────────────────────────────────
@@ -348,15 +297,10 @@ export interface BackupData {
 }
 
 export async function exportData(): Promise<BackupData> {
-  const conn = await db();
+  const conn = await idb();
   const [groups, teams, players, games, participants, rounds, picks] = await Promise.all([
-    conn.getAll('groups'),
-    conn.getAll('teams'),
-    conn.getAll('players'),
-    conn.getAll('games'),
-    conn.getAll('participants'),
-    conn.getAll('rounds'),
-    conn.getAll('picks'),
+    conn.getAll('groups'), conn.getAll('teams'), conn.getAll('players'),
+    conn.getAll('games'), conn.getAll('participants'), conn.getAll('rounds'), conn.getAll('picks'),
   ]);
   return { version: 2, exportedAt: new Date().toISOString(), groups, teams, players, games, participants, rounds, picks };
 }
@@ -365,7 +309,7 @@ export async function importData(json: string): Promise<void> {
   const data = JSON.parse(json) as Partial<BackupData>;
   if (data.version !== 2) throw new Error('Unrecognised backup format (expected version 2)');
   const storeNames = ['groups', 'teams', 'players', 'games', 'participants', 'rounds', 'picks'] as const;
-  const conn = await db();
+  const conn = await idb();
   const tx = conn.transaction(storeNames, 'readwrite');
   for (const s of storeNames) tx.objectStore(s).clear();
   for (const r of data.groups       ?? []) tx.objectStore('groups').put(r);

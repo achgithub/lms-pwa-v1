@@ -34,18 +34,13 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
 
   const load = useCallback(async () => {
     try {
-      const [g, parts, rds, pks] = await Promise.all([
-        db.getGame(gameId),
-        db.getParticipants(gameId),
-        db.getRounds(gameId),
-        db.getPicks(gameId),
-      ]);
-      if (!g) { onBack(); return; }
-      setGame(g);
-      setParticipants(parts);
-      setRounds(rds);
-      setPicks(pks);
-      const t = await db.getTeamsByGroup(g.groupId);
+      const detail = await db.getGameDetail(gameId);
+      if (!detail) { onBack(); return; }
+      setGame(detail.game);
+      setParticipants(detail.participants);
+      setRounds(detail.rounds);
+      setPicks(detail.picks);
+      const t = await db.getTeamsByGroup(detail.game.groupId);
       setTeams(t);
     } catch (e) {
       setError(String(e));

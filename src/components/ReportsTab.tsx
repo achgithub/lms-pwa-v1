@@ -20,14 +20,11 @@ export default function ReportsTab() {
     setLoading(true);
     setError('');
     try {
-      const [parts, rds, pks] = await Promise.all([
-        db.getParticipants(gameId),
-        db.getRounds(gameId),
-        db.getPicks(gameId),
-      ]);
-      setParticipants(parts);
-      setRounds(rds);
-      setPicks(pks);
+      const detail = await db.getGameDetail(gameId);
+      if (!detail) return;
+      setParticipants(detail.participants);
+      setRounds(detail.rounds);
+      setPicks(detail.picks);
       setFilterRound('all');
     } catch (e) {
       setError(String(e));
