@@ -6,3 +6,6 @@ pages_build_output_dir = "dist"
 binding = "DB"
 database_name = "lms-db"
 database_id = "d4599b40-f029-4552-bb12-27590e4e8eca"
+
+[vars]
+# JWT_SECRET is set as an encrypted Secret in the Cloudflare dashboard

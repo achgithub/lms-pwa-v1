@@ -97,9 +97,10 @@ function Shell() {
   }, []);
 
   if (needsSetup === null) return <div className="auth-page"><span className="spinner" /></div>;
-  if (needsSetup)          return <SetupPage />;
+  if (user)                return <MainApp />;
   if (inviteToken)         return <RegisterPage token={inviteToken} />;
-  if (!user)               return <LoginPage />;
+  if (needsSetup)          return <SetupPage />;
+  return <LoginPage />;
 
   return <MainApp />;
 }
