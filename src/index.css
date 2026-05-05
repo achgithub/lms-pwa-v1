@@ -76,11 +76,13 @@ body {
 
 .auth-page {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  min-height: 100%;
-  padding: 24px 16px;
+  min-height: 100dvh;
+  padding: 40px 16px 80px;
   background: var(--bg);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .auth-card {

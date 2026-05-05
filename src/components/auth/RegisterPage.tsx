@@ -11,14 +11,12 @@ export default function RegisterPage({ token }: Props) {
   const { login } = useAuth();
   const [name, setName] = useState('');
   const [passcode, setPasscode] = useState('');
-  const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (passcode !== confirm) { setError('Passcodes do not match'); return; }
-    if (passcode.length < 4)  { setError('Passcode must be at least 4 characters'); return; }
+    if (passcode.length < 4) { setError('Passcode must be at least 4 characters'); return; }
     setBusy(true);
     setError('');
     try {
@@ -63,15 +61,7 @@ export default function RegisterPage({ token }: Props) {
               placeholder="Min. 4 characters" required
             />
           </div>
-          <div className="form-group">
-            <label>Confirm passcode</label>
-            <input
-              type="password" autoComplete="new-password"
-              value={confirm} onChange={e => setConfirm(e.target.value)}
-              placeholder="Repeat passcode" required
-            />
-          </div>
-          <button type="submit" className="btn btn-primary btn-full" disabled={busy || !name.trim() || !passcode || !confirm}>
+          <button type="submit" className="btn btn-primary btn-full" disabled={busy || !name.trim() || !passcode}>
             {busy ? <><span className="spinner" /> Joining…</> : 'Join LMS'}
           </button>
         </form>
