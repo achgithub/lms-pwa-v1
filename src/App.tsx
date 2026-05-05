@@ -13,27 +13,12 @@ import { api } from './api/client';
 
 type Tab = 'setup' | 'games' | 'game-detail' | 'reports' | 'tools';
 
-function Shell() {
+// Only rendered when the user is authenticated — safe to sync
+function MainApp() {
   const { user, isManager, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('games');
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
-  const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   const isOnline = useOnlineSync();
-
-  // Check for invite token in URL
-  const inviteToken = new URLSearchParams(window.location.search).get('token');
-
-  useEffect(() => {
-    // Check if admin account exists yet
-    api.get<{ needsSetup: boolean }>('/auth/status')
-      .then(r => setNeedsSetup(r.needsSetup))
-      .catch(() => setNeedsSetup(false));
-  }, []);
-
-  if (needsSetup === null) return <div className="auth-page"><span className="spinner" /></div>;
-  if (needsSetup)         return <SetupPage />;
-  if (inviteToken)        return <RegisterPage token={inviteToken} />;
-  if (!user)              return <LoginPage />;
 
   function openGame(id: number) {
     setSelectedGameId(id);
@@ -60,7 +45,7 @@ function Shell() {
         <span className="app-title">Last Man Standing</span>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
           {!isOnline && <span className="offline-badge">Offline</span>}
-          <span className="text-muted" style={{ fontSize: 13 }}>{user.name}</span>
+          <span className="text-muted" style={{ fontSize: 13 }}>{user!.name}</span>
           <button className="btn btn-ghost btn-sm" onClick={logout}>Sign out</button>
         </div>
       </header>
@@ -97,6 +82,26 @@ function Shell() {
       </main>
     </div>
   );
+}
+
+function Shell() {
+  const { user } = useAuth();
+  const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
+
+  const inviteToken = new URLSearchParams(window.location.search).get('token');
+
+  useEffect(() => {
+    api.get<{ needsSetup: boolean }>('/auth/status')
+      .then(r => setNeedsSetup(r.needsSetup))
+      .catch(() => setNeedsSetup(false));
+  }, []);
+
+  if (needsSetup === null) return <div className="auth-page"><span className="spinner" /></div>;
+  if (needsSetup)          return <SetupPage />;
+  if (inviteToken)         return <RegisterPage token={inviteToken} />;
+  if (!user)               return <LoginPage />;
+
+  return <MainApp />;
 }
 
 export default function App() {

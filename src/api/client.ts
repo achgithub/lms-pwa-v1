@@ -18,9 +18,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(BASE + path, { ...options, headers })
 
   if (res.status === 401) {
-    tokenStore.clear()
-    window.location.reload()
-    throw new Error('Session expired')
+    if (tokenStore.get()) {
+      // Had a token but server rejected it — clear and reload once
+      tokenStore.clear()
+      window.location.reload()
+    }
+    throw new Error('Unauthorized')
   }
 
   if (!res.ok) {
