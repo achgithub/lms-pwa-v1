@@ -8,7 +8,7 @@ interface Props {
 }
 
 export default function GamesListTab({ onSelectGame }: Props) {
-  const { isPlayer } = useAuth();
+  const { actingAsPlayer } = useAuth();
   const [games, setGames] = useState<Game[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -28,8 +28,8 @@ export default function GamesListTab({ onSelectGame }: Props) {
 
   const load = useCallback(async () => {
     try {
-      if (isPlayer) {
-        const g = await db.getGames();
+      if (actingAsPlayer) {
+        const g = await db.getGames(true);
         setGames(g);
       } else {
         const [g, gr, p] = await Promise.all([db.getGames(), db.getGroups(), db.getPlayers()]);
@@ -42,16 +42,16 @@ export default function GamesListTab({ onSelectGame }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [isPlayer]);
+  }, [actingAsPlayer]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Players with exactly one game skip the list and go straight in
+  // Single-game auto-redirect for player view
   useEffect(() => {
-    if (isPlayer && !loading && games.length === 1) {
+    if (actingAsPlayer && !loading && games.length === 1) {
       onSelectGame(games[0].id);
     }
-  }, [isPlayer, loading, games, onSelectGame]);
+  }, [actingAsPlayer, loading, games, onSelectGame]);
 
   function togglePlayer(name: string) {
     setFormSelectedPlayers(prev => {
@@ -107,7 +107,7 @@ export default function GamesListTab({ onSelectGame }: Props) {
   if (loading) return <div className="empty-state"><span className="spinner" /></div>;
 
   // Player view — simple game picker (auto-redirect handled by useEffect for 1 game)
-  if (isPlayer) {
+  if (actingAsPlayer) {
     return (
       <div>
         {error && <div className="alert alert-error">{error}</div>}

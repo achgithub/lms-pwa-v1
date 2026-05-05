@@ -7,6 +7,9 @@ interface AuthContextValue {
   isAdmin: boolean;
   isManager: boolean;
   isPlayer: boolean;
+  actingAsPlayer: boolean;
+  viewMode: 'default' | 'player';
+  setViewMode: (mode: 'default' | 'player') => void;
   login: (token: string, user: AuthUser) => void;
   logout: () => void;
 }
@@ -31,6 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token = tokenStore.get();
     return token ? parseToken(token) : null;
   });
+  const [viewMode, setViewMode] = useState<'default' | 'player'>('default');
 
   const login = useCallback((token: string, authUser: AuthUser) => {
     tokenStore.set(token);
@@ -40,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     tokenStore.clear();
     setUser(null);
+    setViewMode('default');
   }, []);
 
   // Listen for token expiry events fired by the API client
@@ -49,12 +54,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('auth:expired', handle);
   }, []);
 
+  const isPlayer = user?.role === 'player';
+  const isManager = user?.role === 'admin' || user?.role === 'manager';
+
   return (
     <AuthContext.Provider value={{
       user,
       isAdmin: user?.role === 'admin',
-      isManager: user?.role === 'admin' || user?.role === 'manager',
-      isPlayer: user?.role === 'player',
+      isManager,
+      isPlayer,
+      actingAsPlayer: isPlayer || viewMode === 'player',
+      viewMode,
+      setViewMode,
       login,
       logout,
     }}>

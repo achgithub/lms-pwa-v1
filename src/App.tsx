@@ -15,7 +15,7 @@ type Tab = 'setup' | 'games' | 'game-detail' | 'reports' | 'tools';
 
 // Only rendered when the user is authenticated — safe to sync
 function MainApp() {
-  const { user, isManager, logout } = useAuth();
+  const { user, isManager, isPlayer, viewMode, setViewMode, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('games');
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
   const isOnline = useOnlineSync();
@@ -26,6 +26,12 @@ function MainApp() {
   }
 
   function backToGames() {
+    setSelectedGameId(null);
+    setActiveTab('games');
+  }
+
+  function toggleViewMode() {
+    setViewMode(viewMode === 'player' ? 'default' : 'player');
     setSelectedGameId(null);
     setActiveTab('games');
   }
@@ -45,6 +51,11 @@ function MainApp() {
         <span className="app-title">Last Man Standing</span>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
           {!isOnline && <span className="offline-badge">Offline</span>}
+          {isManager && !isPlayer && (
+            <button className="btn btn-ghost btn-sm" onClick={toggleViewMode}>
+              {viewMode === 'player' ? '← Manager View' : 'Player View'}
+            </button>
+          )}
           <span className="text-muted" style={{ fontSize: 13 }}>{user!.name}</span>
           <button className="btn btn-ghost btn-sm" onClick={logout}>Sign out</button>
         </div>

@@ -30,11 +30,11 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
   const [addingPlayer, setAddingPlayer] = useState(false);
 
   const [busy, setBusy] = useState(false);
-  const { user, isManager } = useAuth();
+  const { user, actingAsPlayer } = useAuth();
 
   const load = useCallback(async () => {
     try {
-      const detail = await db.getGameDetail(gameId);
+      const detail = await db.getGameDetail(gameId, actingAsPlayer);
       if (!detail) { onBack(); return; }
       setGame(detail.game);
       setParticipants(detail.participants);
@@ -56,8 +56,9 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
 
   const openRound = rounds.find(r => r.roundNumber === game.currentRound && r.status === 'open');
   const activeParticipants = participants.filter(p => p.isActive);
-  // Players only see and interact with their own row
-  const visibleParticipants = isManager ? activeParticipants : activeParticipants.filter(p => p.playerName === user?.name);
+  const visibleParticipants = actingAsPlayer
+    ? activeParticipants.filter(p => p.playerName === user?.name)
+    : activeParticipants;
   const currentRoundPicks = picks.filter(p => openRound && p.roundId === openRound.id);
 
   // Determine phase: 'assign' = assigning picks, 'results' = entering results
@@ -270,9 +271,11 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
             )}
           </div>
         </div>
-        <button className="btn btn-danger btn-sm" onClick={handleDelete} disabled={busy}>
-          Delete
-        </button>
+        {!actingAsPlayer && (
+          <button className="btn btn-danger btn-sm" onClick={handleDelete} disabled={busy}>
+            Delete
+          </button>
+        )}
       </div>
 
       {game.status === 'completed' ? (
@@ -288,13 +291,15 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
             <div className="card">
               <div className="section-header">
                 <h3 className="card-title" style={{ marginBottom: 0 }}>Round {game.currentRound} — Assign Picks</h3>
-                <button
-                  className="btn btn-primary"
-                  onClick={finalizePicks}
-                  disabled={busy}
-                >
-                  {busy ? <><span className="spinner" /> Working…</> : 'Finalize Picks (Auto-assign remaining)'}
-                </button>
+                {!actingAsPlayer && (
+                  <button
+                    className="btn btn-primary"
+                    onClick={finalizePicks}
+                    disabled={busy}
+                  >
+                    {busy ? <><span className="spinner" /> Working…</> : 'Finalize Picks (Auto-assign remaining)'}
+                  </button>
+                )}
               </div>
 
               <div className="table-wrap mt-12">
@@ -359,13 +364,15 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
             <div className="card">
               <div className="section-header">
                 <h3 className="card-title" style={{ marginBottom: 0 }}>Round {game.currentRound} — Enter Results</h3>
-                <button
-                  className="btn btn-success"
-                  onClick={handleCloseRound}
-                  disabled={busy || [...picksByTeam.keys()].some(t => !pendingResults[t])}
-                >
-                  {busy ? <><span className="spinner" /> Working…</> : 'Close Round & Advance'}
-                </button>
+                {!actingAsPlayer && (
+                  <button
+                    className="btn btn-success"
+                    onClick={handleCloseRound}
+                    disabled={busy || [...picksByTeam.keys()].some(t => !pendingResults[t])}
+                  >
+                    {busy ? <><span className="spinner" /> Working…</> : 'Close Round & Advance'}
+                  </button>
+                )}
               </div>
 
               <p className="text-muted" style={{ marginBottom: 16 }}>
@@ -414,7 +421,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
       <div className="card mt-16">
         <div className="section-header">
           <h3 className="section-title">Participants ({participants.length})</h3>
-          {game.status === 'active' && (
+          {game.status === 'active' && !actingAsPlayer && (
             <form onSubmit={handleAddParticipant} className="form-row" style={{ margin: 0 }}>
               <input
                 type="text"

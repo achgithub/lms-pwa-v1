@@ -155,15 +155,14 @@ export async function deletePlayer(id: number): Promise<void> {
 
 // ── Games ─────────────────────────────────────────────────────────────────────
 
-export async function getGames(): Promise<Game[]> {
-  if (navigator.onLine) return api.get<Game[]>('/games');
+export async function getGames(asPlayer = false): Promise<Game[]> {
+  if (navigator.onLine) return api.get<Game[]>(asPlayer ? '/games?view=player' : '/games');
   return (await idb()).getAll('games');
 }
 
-export async function getGameDetail(gameId: number): Promise<GameDetail | null> {
+export async function getGameDetail(gameId: number, asPlayer = false): Promise<GameDetail | null> {
   if (navigator.onLine) {
-    const detail = await api.get<GameDetail>(`/games/${gameId}`);
-    return detail;
+    return api.get<GameDetail>(asPlayer ? `/games/${gameId}?view=player` : `/games/${gameId}`);
   }
   // Offline: assemble from IDB
   const conn = await idb();

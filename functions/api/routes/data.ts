@@ -120,13 +120,24 @@ data.delete('/players/:id', requireRole('admin', 'manager'), async (c) => {
 
 data.get('/games', async (c) => {
   const role = c.get('userRole')
-  if (role === 'player') {
-    const userName = c.get('userName')
+  const userId = c.get('userId')
+  const userName = c.get('userName')
+  const asPlayer = c.req.query('view') === 'player'
+
+  if (role === 'player' || asPlayer) {
     const { results } = await c.env.DB.prepare(
       `${GAME_SELECT} JOIN participants p ON p.game_id = g.id WHERE p.player_name = ? ORDER BY g.created_at DESC`
     ).bind(userName).all<Record<string, unknown>>()
     return c.json(results.map(mapGame))
   }
+
+  if (role === 'manager') {
+    const { results } = await c.env.DB.prepare(
+      `${GAME_SELECT} WHERE g.manager_id = ? ORDER BY g.created_at DESC`
+    ).bind(userId).all<Record<string, unknown>>()
+    return c.json(results.map(mapGame))
+  }
+
   const { results } = await c.env.DB.prepare(
     `${GAME_SELECT} ORDER BY g.created_at DESC`
   ).all<Record<string, unknown>>()
@@ -163,14 +174,24 @@ data.post('/games', async (c) => {
 
 data.get('/games/:id', async (c) => {
   const id = Number(c.req.param('id'))
+  const role = c.get('userRole')
+  const userId = c.get('userId')
+  const userName = c.get('userName')
+  const asPlayer = c.req.query('view') === 'player'
+
   const game = await c.env.DB.prepare(`${GAME_SELECT} WHERE g.id = ?`).bind(id).first<Record<string, unknown>>()
   if (!game) return c.json({ error: 'not found' }, 404)
 
-  if (c.get('userRole') === 'player') {
+  if (role === 'player' || asPlayer) {
     const member = await c.env.DB.prepare(
       `SELECT id FROM participants WHERE game_id = ? AND player_name = ?`
-    ).bind(id, c.get('userName')).first()
+    ).bind(id, userName).first()
     if (!member) return c.json({ error: 'Forbidden' }, 403)
+  } else if (role === 'manager') {
+    const owned = await c.env.DB.prepare(
+      `SELECT id FROM games WHERE id = ? AND manager_id = ?`
+    ).bind(id, userId).first()
+    if (!owned) return c.json({ error: 'Forbidden' }, 403)
   }
 
   const [parts, rounds, picks] = await Promise.all([
@@ -322,29 +343,40 @@ data.get('/sync', async (c) => {
   let roundRows: Round[] = []
   let pickRows: Record<string, unknown>[] = []
 
-  if (c.get('userRole') === 'player') {
-    const userName = c.get('userName')
-    const { results: myGames } = await c.env.DB.prepare(
-      `SELECT DISTINCT game_id as id FROM participants WHERE player_name = ?`
-    ).bind(userName).all<{ id: number }>()
+  const role = c.get('userRole')
+  const userId = c.get('userId')
+  const userName = c.get('userName')
 
-    if (myGames.length > 0) {
-      const ph = myGames.map(() => '?').join(',')
-      const ids = myGames.map(r => r.id);
-      [gameRows, participantRows, roundRows, pickRows] = await Promise.all([
-        c.env.DB.prepare(`${GAME_SELECT} WHERE g.id IN (${ph}) ORDER BY g.created_at DESC`).bind(...ids).all<Record<string, unknown>>().then(r => r.results),
-        c.env.DB.prepare(`SELECT id, game_id as gameId, player_name as playerName, is_active as isActive, eliminated_in_round as eliminatedInRound, created_at as createdAt FROM participants WHERE game_id IN (${ph})`).bind(...ids).all<Record<string, unknown>>().then(r => r.results),
-        c.env.DB.prepare(`SELECT id, game_id as gameId, round_number as roundNumber, status, created_at as createdAt FROM rounds WHERE game_id IN (${ph})`).bind(...ids).all<Round>().then(r => r.results),
-        c.env.DB.prepare(`SELECT id, game_id as gameId, round_id as roundId, player_name as playerName, team_id as teamId, team_name as teamName, result, auto_assigned as autoAssigned, created_at as createdAt FROM picks WHERE game_id IN (${ph})`).bind(...ids).all<Record<string, unknown>>().then(r => r.results),
-      ]) as [Record<string, unknown>[], Record<string, unknown>[], Round[], Record<string, unknown>[]]
-    }
-  } else {
+  if (role === 'admin') {
     ;[gameRows, participantRows, roundRows, pickRows] = await Promise.all([
       c.env.DB.prepare(`${GAME_SELECT} ORDER BY g.created_at DESC`).all<Record<string, unknown>>().then(r => r.results),
       c.env.DB.prepare(`SELECT id, game_id as gameId, player_name as playerName, is_active as isActive, eliminated_in_round as eliminatedInRound, created_at as createdAt FROM participants`).all<Record<string, unknown>>().then(r => r.results),
       c.env.DB.prepare(`SELECT id, game_id as gameId, round_number as roundNumber, status, created_at as createdAt FROM rounds`).all<Round>().then(r => r.results),
       c.env.DB.prepare(`SELECT id, game_id as gameId, round_id as roundId, player_name as playerName, team_id as teamId, team_name as teamName, result, auto_assigned as autoAssigned, created_at as createdAt FROM picks`).all<Record<string, unknown>>().then(r => r.results),
     ]) as [Record<string, unknown>[], Record<string, unknown>[], Round[], Record<string, unknown>[]]
+  } else {
+    // Manager: union of managed games + games they're a participant in
+    // Player: games they're a participant in
+    const idQueries: Promise<{ id: number }[]>[] = [
+      c.env.DB.prepare(`SELECT DISTINCT game_id as id FROM participants WHERE player_name = ?`).bind(userName).all<{ id: number }>().then(r => r.results),
+    ]
+    if (role === 'manager') {
+      idQueries.push(
+        c.env.DB.prepare(`SELECT id FROM games WHERE manager_id = ?`).bind(userId).all<{ id: number }>().then(r => r.results)
+      )
+    }
+    const idSets = await Promise.all(idQueries)
+    const ids = [...new Set(idSets.flat().map(r => r.id))]
+
+    if (ids.length > 0) {
+      const ph = ids.map(() => '?').join(',')
+      ;[gameRows, participantRows, roundRows, pickRows] = await Promise.all([
+        c.env.DB.prepare(`${GAME_SELECT} WHERE g.id IN (${ph}) ORDER BY g.created_at DESC`).bind(...ids).all<Record<string, unknown>>().then(r => r.results),
+        c.env.DB.prepare(`SELECT id, game_id as gameId, player_name as playerName, is_active as isActive, eliminated_in_round as eliminatedInRound, created_at as createdAt FROM participants WHERE game_id IN (${ph})`).bind(...ids).all<Record<string, unknown>>().then(r => r.results),
+        c.env.DB.prepare(`SELECT id, game_id as gameId, round_number as roundNumber, status, created_at as createdAt FROM rounds WHERE game_id IN (${ph})`).bind(...ids).all<Round>().then(r => r.results),
+        c.env.DB.prepare(`SELECT id, game_id as gameId, round_id as roundId, player_name as playerName, team_id as teamId, team_name as teamName, result, auto_assigned as autoAssigned, created_at as createdAt FROM picks WHERE game_id IN (${ph})`).bind(...ids).all<Record<string, unknown>>().then(r => r.results),
+      ]) as [Record<string, unknown>[], Record<string, unknown>[], Round[], Record<string, unknown>[]]
+    }
   }
 
   return c.json({

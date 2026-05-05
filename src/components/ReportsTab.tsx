@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { Game, Participant, Round, Pick } from '../types';
 import * as db from '../db';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function ReportsTab() {
+  const { actingAsPlayer } = useAuth();
   const [games, setGames] = useState<Game[]>([]);
   const [selectedGameId, setSelectedGameId] = useState<number | ''>('');
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -13,8 +15,8 @@ export default function ReportsTab() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    db.getGames().then(setGames).catch(e => setError(String(e)));
-  }, []);
+    db.getGames(actingAsPlayer).then(setGames).catch(e => setError(String(e)));
+  }, [actingAsPlayer]);
 
   const loadGame = useCallback(async (gameId: number) => {
     setLoading(true);
