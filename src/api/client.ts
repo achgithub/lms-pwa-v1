@@ -19,9 +19,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (res.status === 401) {
     if (tokenStore.get()) {
-      // Had a token but server rejected it — clear and reload once
+      // Token rejected by server — clear it and notify AuthContext
       tokenStore.clear()
-      window.location.reload()
+      window.dispatchEvent(new Event('auth:expired'))
     }
     throw new Error('Unauthorized')
   }

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
 import { tokenStore } from '../api/client';
 import type { AuthUser } from '../types';
 
@@ -15,7 +15,10 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 function parseToken(token: string): AuthUser | null {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    // JWT uses base64url — convert to standard base64 before atob
+    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
+    const payload = JSON.parse(atob(padded));
     if (payload.exp * 1000 < Date.now()) return null;
     return { id: payload.sub, name: payload.name, role: payload.role };
   } catch {
@@ -37,6 +40,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     tokenStore.clear();
     setUser(null);
+  }, []);
+
+  // Listen for token expiry events fired by the API client
+  useEffect(() => {
+    const handle = () => setUser(null);
+    window.addEventListener('auth:expired', handle);
+    return () => window.removeEventListener('auth:expired', handle);
   }, []);
 
   return (
