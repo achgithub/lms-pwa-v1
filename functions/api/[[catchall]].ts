@@ -10,8 +10,7 @@ const app = new Hono<HonoEnv>().basePath('/api')
 // Public — no JWT required
 app.route('/auth', authRoutes)
 
-// Protected — all data routes require a valid JWT
-app.use('*', authMiddleware)
+// Protected — authMiddleware is applied inside dataRoutes
 app.route('/', dataRoutes)
 
 export const onRequest = handle(app)

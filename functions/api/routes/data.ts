@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../lib/types'
 import type { Game, Group, Participant, Pick, Player, Team, Round } from '../../../src/types'
+import { authMiddleware } from '../middleware/auth'
 
 const data = new Hono<HonoEnv>()
+data.use('*', authMiddleware)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

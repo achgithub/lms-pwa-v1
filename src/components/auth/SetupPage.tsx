@@ -7,12 +7,14 @@ export default function SetupPage() {
   const { login } = useAuth();
   const [name, setName] = useState('');
   const [passcode, setPasscode] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (passcode.length < 4) { setError('Passcode must be at least 4 characters'); return; }
+    if (passcode.length < 4)  { setError('Passcode must be at least 4 characters'); return; }
+    if (passcode !== confirm)  { setError('Passcodes do not match'); return; }
     setBusy(true);
     setError('');
     try {
@@ -53,7 +55,15 @@ export default function SetupPage() {
               placeholder="Min. 4 characters" required
             />
           </div>
-          <button type="submit" className="btn btn-primary btn-full" disabled={busy || !name.trim() || !passcode}>
+          <div className="form-group">
+            <label>Confirm passcode</label>
+            <input
+              type="password" autoComplete="new-password"
+              value={confirm} onChange={e => setConfirm(e.target.value)}
+              placeholder="Repeat passcode" required
+            />
+          </div>
+          <button type="submit" className="btn btn-primary btn-full" disabled={busy || !name.trim() || !passcode || !confirm}>
             {busy ? <><span className="spinner" /> Creating…</> : 'Create Admin Account'}
           </button>
         </form>
