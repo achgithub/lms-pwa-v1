@@ -4,12 +4,14 @@ import GamesListTab from './components/GamesListTab';
 import GameDetailTab from './components/GameDetailTab';
 import ReportsTab from './components/ReportsTab';
 import ToolsTab from './components/ToolsTab';
+import { useOnlineSync } from './hooks/useOnlineSync';
 
 type Tab = 'setup' | 'games' | 'game-detail' | 'reports' | 'tools';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('games');
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
+  const isOnline = useOnlineSync();
 
   function openGame(id: number) {
     setSelectedGameId(id);
@@ -33,6 +35,9 @@ export default function App() {
       <header className="app-header">
         <span className="app-logo">LMS</span>
         <span className="app-title">Last Man Standing</span>
+        {!isOnline && (
+          <span className="offline-badge">Offline</span>
+        )}
       </header>
 
       <nav className="app-nav">
@@ -52,6 +57,12 @@ export default function App() {
           <button className="nav-tab active">Game Detail</button>
         )}
       </nav>
+
+      {!isOnline && (
+        <div className="offline-banner">
+          No connection — viewing saved data, changes disabled
+        </div>
+      )}
 
       <main className="app-content">
         {activeTab === 'setup' && <SetupTab />}

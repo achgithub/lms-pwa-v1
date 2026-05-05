@@ -72,6 +72,28 @@ body {
   color: var(--text-muted);
 }
 
+.offline-badge {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--warning);
+  background: rgba(237, 137, 54, 0.15);
+  border: 1px solid var(--warning);
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+.offline-banner {
+  background: rgba(237, 137, 54, 0.12);
+  border-bottom: 1px solid var(--warning);
+  color: var(--warning);
+  font-size: 13px;
+  text-align: center;
+  padding: 6px 20px;
+  flex-shrink: 0;
+}
+
 .app-nav {
   display: flex;
   gap: 2px;

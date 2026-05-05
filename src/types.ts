@@ -75,3 +75,13 @@ export interface GameDetail {
   rounds: Round[];
   picks: Pick[];
 }
+
+export interface SyncData {
+  groups: Group[];
+  teams: Team[];
+  players: Player[];
+  games: Game[];
+  participants: Participant[];
+  rounds: Round[];
+  picks: Pick[];
+}

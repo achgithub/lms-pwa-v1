@@ -1,3 +1,8 @@
 name = "lms-pwa-v1"
 compatibility_date = "2025-05-02"
 pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "lms-db"
+database_id = "d4599b40-f029-4552-bb12-27590e4e8eca"
