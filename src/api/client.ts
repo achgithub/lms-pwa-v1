@@ -7,7 +7,7 @@ export const tokenStore = {
   clear: () => localStorage.removeItem(TOKEN_KEY),
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}, background = false): Promise<T> {
   const token = tokenStore.get()
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -18,8 +18,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(BASE + path, { ...options, headers })
 
   if (res.status === 401) {
-    if (tokenStore.get()) {
-      // Token rejected by server — clear it and notify AuthContext
+    // Background calls (sync) should never log the user out — fail silently
+    if (!background && tokenStore.get()) {
       tokenStore.clear()
       window.dispatchEvent(new Event('auth:expired'))
     }
@@ -39,4 +39,6 @@ export const api = {
   post:   <T>(path: string, body: unknown) => request<T>(path, { method: 'POST',   body: JSON.stringify(body) }),
   put:    <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT',    body: JSON.stringify(body) }),
   delete: <T>(path: string)               => request<T>(path, { method: 'DELETE' }),
+  // Background variant — 401 fails silently without triggering logout
+  getBackground: <T>(path: string)        => request<T>(path, {}, true),
 }

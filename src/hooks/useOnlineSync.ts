@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
+
 import { importSync } from '../db';
 import type { SyncData } from '../types';
 
 async function syncFromServer(): Promise<void> {
   try {
-    const data = await api.get<SyncData>('/sync');
+    const data = await api.getBackground<SyncData>('/sync');
     await importSync(data);
   } catch {
     // Stay with cached local data if sync fails
