@@ -78,6 +78,10 @@ data.post('/groups/:groupId/teams', requireRole('admin'), async (c) => {
 
 data.delete('/teams/:id', requireRole('admin'), async (c) => {
   const id = Number(c.req.param('id'))
+  const active = await c.env.DB.prepare(
+    `SELECT 1 FROM games g JOIN teams t ON t.group_id = g.group_id WHERE t.id = ? AND g.status = 'active' LIMIT 1`
+  ).bind(id).first()
+  if (active) return c.json({ error: 'This team belongs to a group with an active game and cannot be deleted' }, 409)
   await c.env.DB.prepare('DELETE FROM teams WHERE id = ?').bind(id).run()
   return new Response(null, { status: 204 })
 })
@@ -102,6 +106,12 @@ data.post('/players', requireRole('admin', 'manager'), async (c) => {
 
 data.delete('/players/:id', requireRole('admin', 'manager'), async (c) => {
   const id = Number(c.req.param('id'))
+  const player = await c.env.DB.prepare(`SELECT name FROM players WHERE id = ?`).bind(id).first<{ name: string }>()
+  if (!player) return c.json({ error: 'Not found' }, 404)
+  const active = await c.env.DB.prepare(
+    `SELECT 1 FROM participants p JOIN games g ON g.id = p.game_id WHERE p.player_name = ? AND g.status = 'active' LIMIT 1`
+  ).bind(player.name).first()
+  if (active) return c.json({ error: `${player.name} is in an active game and cannot be deleted` }, 409)
   await c.env.DB.prepare('DELETE FROM players WHERE id = ?').bind(id).run()
   return new Response(null, { status: 204 })
 })
