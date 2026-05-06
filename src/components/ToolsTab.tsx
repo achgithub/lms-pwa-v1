@@ -1,11 +1,45 @@
 import { useRef, useState } from 'react';
 import { exportData, importData } from '../db';
+import { api } from '../api/client';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function ToolsTab() {
+  const { isAdmin } = useAuth();
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [groups, setGroups] = useState<{ id: number; name: string }[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<number | ''>('');
+  const [loadingGroups, setLoadingGroups] = useState(false);
+  const [importing2, setImporting2] = useState(false);
+
+  async function loadGroups() {
+    setLoadingGroups(true);
+    try {
+      const data = await api.get<{ id: number; name: string }[]>('/groups');
+      setGroups(data);
+      if (data.length > 0) setSelectedGroupId(data[0].id);
+    } catch (e) {
+      showStatus('error', `Failed to load groups: ${String(e)}`);
+    } finally {
+      setLoadingGroups(false);
+    }
+  }
+
+  async function handleImportTeams() {
+    if (!selectedGroupId) return;
+    setImporting2(true);
+    try {
+      const res = await api.post<{ imported: number }>('/admin/import-teams', { groupId: selectedGroupId });
+      showStatus('success', `Imported ${res.imported} teams into group`);
+    } catch (e) {
+      showStatus('error', `Import failed: ${String(e)}`);
+    } finally {
+      setImporting2(false);
+    }
+  }
 
   function showStatus(type: 'success' | 'error', msg: string) {
     setStatus({ type, msg });
@@ -136,6 +170,38 @@ export default function ToolsTab() {
           </div>
         </div>
       </div>
+
+      {isAdmin && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h2 className="card-title">Import PL Teams</h2>
+          <p className="text-muted" style={{ marginBottom: 16 }}>
+            One-off import of Premier League teams from football-data.org into a group.
+          </p>
+          {status && (
+            <div className={`alert alert-${status.type === 'success' ? 'success' : 'error'}`} style={{ marginBottom: 16 }}>
+              {status.msg}
+            </div>
+          )}
+          {groups.length === 0 ? (
+            <button className="btn btn-secondary" onClick={loadGroups} disabled={loadingGroups}>
+              {loadingGroups ? <><span className="spinner" /> Loading…</> : 'Load Groups'}
+            </button>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <select
+                className="input"
+                value={selectedGroupId}
+                onChange={e => setSelectedGroupId(Number(e.target.value))}
+              >
+                {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+              <button className="btn btn-primary" onClick={handleImportTeams} disabled={importing2}>
+                {importing2 ? <><span className="spinner" /> Importing…</> : 'Import PL Teams'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="card" style={{ marginTop: 16 }}>
         <h2 className="card-title">About</h2>
