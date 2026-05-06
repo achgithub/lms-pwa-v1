@@ -1,5 +1,5 @@
 # LMS PWA — Handover Summary
-**Date:** 2026-05-05  
+**Date:** 2026-05-07  
 **Branch:** main  
 **Deployed to:** Cloudflare Pages (lms-pwa-v1.pages.dev)
 
@@ -41,7 +41,8 @@ Background sync (`GET /api/sync`) uses `getBackground()` API variant — 401 fai
 `games` (belongs to group, has manager_id)  
 `participants` (player_name string, game_id)  
 `rounds` (game_id, round_number, status: open/closed)  
-`picks` (game_id, round_id, player_name, team_name, result)
+`picks` (game_id, round_id, player_name, team_name, result)  
+`fixtures` (Premier League matches — id is football-data.org match id)
 
 Notable: D1 uses integers for booleans (0/1); all boolean fields mapped in Worker helpers (`mapGame`, `mapParticipant`, `mapPick`).
 
@@ -72,6 +73,8 @@ functions/api/
   [[catchall]].ts       Entry point, auth middleware wiring
   routes/auth.ts        Login, setup, invite, register
   routes/data.ts        All data CRUD, role scoping, deletion guards
+                        Includes: POST /admin/import-teams
+                                  POST /admin/sync-fixtures
   middleware/auth.ts    authMiddleware, requireRole()
   lib/jwt.ts            Custom Web Crypto HS256 JWT
   lib/crypto.ts         PBKDF2 passcode hashing
@@ -89,18 +92,53 @@ src/
     GamesListTab        Game list + create form; player view = card picker
     GameDetailTab       Picks, results, round management
     ReportsTab          Read-only game/round/standings view
+    ToolsTab            Backup/restore + admin: Sync Fixtures, Import PL Teams
+
+sync-worker/            Cloudflare Worker (deployed separately, git-connected)
+  wrangler.toml         Cron: 0 */6 * * * — currently non-functional (see below)
+  src/index.ts          Fetches football-data.org, upserts fixtures into D1
 ```
+
+---
+
+## Phase 4: Fixtures Sync — Current State
+
+### What's built
+- `fixtures` D1 table (migration_003_fixtures.sql — already applied to production)
+- `teams` table has new `external_id` and `crest_url` columns
+- `POST /api/admin/sync-fixtures` — accepts a `{ matches: [] }` array, upserts into D1
+- `POST /api/admin/import-teams` — fetches PL teams from football-data.org, upserts into a group
+- Tools tab has **Sync Fixtures** and **Import PL Teams** admin buttons
+- `sync-worker/` deployed to Cloudflare as `lms-sync-worker` (git-connected, auto-deploys)
+
+### The problem: football-data.org free plan blocks Cloudflare IPs
+- Cloudflare Workers → 522 (blocked)
+- Cloudflare Pages Functions → 522 (blocked)
+- Browser fetch (cross-origin from pages.dev) → 522 (also blocked)
+- `curl` from a local/residential machine → works fine
+- api-football.com free plan tried — blocks historical seasons, not useful
+- api-sports.io (same API) free plan tried — same restriction
+
+### Next step: Raspberry Pi sync
+The Pi runs on a residential IP so football-data.org won't block it. Plan:
+1. Add `SYNC_SECRET` env var to Cloudflare Pages (long-lived alternative to JWT)
+2. Update `POST /api/admin/sync-fixtures` to accept `Authorization: Bearer <SYNC_SECRET>`
+3. Pi runs a cron script (curl) that fetches from football-data.org and POSTs to the API
+4. iOS users just read from D1 — they never touch the external API
+
+`sync-worker/` can be left in place or repurposed — it's deployed but its cron does nothing useful until the IP block is resolved.
 
 ---
 
 ## What's Not Done Yet
 
-1. **Remove `/api/debug/env` endpoint** — left in for now, remove before going public
-2. **Sports API (Phase 4)** — football-data.org integration for competitions → teams import and fixture/result sync. Reference Go implementation at `/Users/andrewharris/projects/lms`
+1. **Remove `/api/debug/env` endpoint** — remove before going public
+2. **Raspberry Pi sync script** — see Phase 4 next step above
 3. **iOS/Safari PWA specifics (Phase 5)** — user has a specific UX vision to discuss before building
 4. **Push notifications (Phase 6)** — Safari supports Web Push from iOS 16.4+; needs Worker endpoint for push subscriptions in D1
-5. **Passkeys** — planned future replacement for passcode auth
-6. **Automated testing** — no test suite yet; all testing manual
+5. **UI for fixtures** — fixtures table exists but nothing in the UI uses it yet (round scheduling TBC)
+6. **Passkeys** — planned future replacement for passcode auth
+7. **Automated testing** — no test suite yet; all testing manual
 
 ---
 
@@ -111,4 +149,5 @@ User has no local Node/npm — all npm commands run via Docker:
 docker run --rm -v "$(pwd)":/app -w /app node:20-alpine sh -c "npm run build"
 docker run --rm -v "$(pwd)":/app -w /app node:20-alpine sh -c "npm install"
 ```
-Deploy is automatic: push to `main` → Cloudflare Pages CI/CD builds and deploys.
+Deploy is automatic: push to `main` → Cloudflare Pages CI/CD builds and deploys.  
+`sync-worker` also auto-deploys on push (connected via Cloudflare Workers Git integration).
