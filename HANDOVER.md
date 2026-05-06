@@ -94,9 +94,6 @@ src/
     ReportsTab          Read-only game/round/standings view
     ToolsTab            Backup/restore + admin: Sync Fixtures, Import PL Teams
 
-sync-worker/            Cloudflare Worker (deployed separately, git-connected)
-  wrangler.toml         Cron: 0 */6 * * * — currently non-functional (see below)
-  src/index.ts          Fetches football-data.org, upserts fixtures into D1
 ```
 
 ---
@@ -126,7 +123,7 @@ The Pi runs on a residential IP so football-data.org won't block it. Plan:
 3. Pi runs a cron script (curl) that fetches from football-data.org and POSTs to the API
 4. iOS users just read from D1 — they never touch the external API
 
-`sync-worker/` can be left in place or repurposed — it's deployed but its cron does nothing useful until the IP block is resolved.
+`sync-worker/` has been removed from the repo. Also delete the `lms-sync-worker` Worker in the Cloudflare dashboard to stop any further builds.
 
 ---
 
@@ -150,4 +147,3 @@ docker run --rm -v "$(pwd)":/app -w /app node:20-alpine sh -c "npm run build"
 docker run --rm -v "$(pwd)":/app -w /app node:20-alpine sh -c "npm install"
 ```
 Deploy is automatic: push to `main` → Cloudflare Pages CI/CD builds and deploys.  
-`sync-worker` also auto-deploys on push (connected via Cloudflare Workers Git integration).
