@@ -28,7 +28,11 @@ export default {
     const url = `https://api.football-data.org/v4/competitions/PL/matches?dateFrom=${fmt(dateFrom)}&dateTo=${fmt(dateTo)}`
 
     const res = await fetch(url, {
-      headers: { 'X-Auth-Token': env.FOOTBALL_DATA_API_KEY },
+      headers: {
+        'X-Auth-Token': env.FOOTBALL_DATA_API_KEY,
+        'Origin': 'https://lms-pwa-v1.pages.dev',
+        'Referer': 'https://lms-pwa-v1.pages.dev/',
+      },
     })
 
     if (!res.ok) {
