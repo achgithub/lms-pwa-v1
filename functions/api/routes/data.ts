@@ -116,6 +116,50 @@ data.post('/admin/import-teams', requireRole('admin'), async (c) => {
   return c.json({ imported: teams.length })
 })
 
+// ── Admin: Sync fixtures from browser-fetched football-data.org payload ───────
+
+interface FDMatch {
+  id: number
+  matchday: number
+  utcDate: string
+  status: string
+  homeTeam: { name: string }
+  awayTeam: { name: string }
+  score: { winner: string | null; fullTime: { home: number | null; away: number | null } }
+}
+
+data.post('/admin/sync-fixtures', requireRole('admin'), async (c) => {
+  const { matches } = await c.req.json<{ matches: FDMatch[] }>()
+  if (!Array.isArray(matches) || matches.length === 0) return c.json({ error: 'matches array required' }, 400)
+
+  const now = new Date().toISOString()
+  const stmts = matches.map((m) =>
+    c.env.DB.prepare(`
+      INSERT INTO fixtures (id, matchday, utc_date, status, home_team_name, away_team_name, home_score, away_score, winner, last_synced)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        status         = excluded.status,
+        home_score     = excluded.home_score,
+        away_score     = excluded.away_score,
+        winner         = excluded.winner,
+        last_synced    = excluded.last_synced
+    `).bind(
+      m.id, m.matchday, m.utcDate, m.status,
+      m.homeTeam.name, m.awayTeam.name,
+      m.score.fullTime.home ?? null,
+      m.score.fullTime.away ?? null,
+      m.score.winner ?? null,
+      now,
+    )
+  )
+
+  for (let i = 0; i < stmts.length; i += 100) {
+    await c.env.DB.batch(stmts.slice(i, i + 100))
+  }
+
+  return c.json({ synced: matches.length })
+})
+
 // ── Players ───────────────────────────────────────────────────────────────────
 
 data.get('/players', async (c) => {

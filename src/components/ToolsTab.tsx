@@ -14,6 +14,7 @@ export default function ToolsTab() {
   const [selectedGroupId, setSelectedGroupId] = useState<number | ''>('');
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [importing2, setImporting2] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   async function loadGroups() {
     setLoadingGroups(true);
@@ -25,6 +26,31 @@ export default function ToolsTab() {
       showStatus('error', `Failed to load groups: ${String(e)}`);
     } finally {
       setLoadingGroups(false);
+    }
+  }
+
+  async function handleSyncFixtures() {
+    setSyncing(true);
+    try {
+      const today = new Date();
+      const dateFrom = new Date(today); dateFrom.setDate(today.getDate() - 20);
+      const dateTo = new Date(today);   dateTo.setDate(today.getDate() + 60);
+      const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+      const apiKey = import.meta.env.VITE_FOOTBALL_DATA_API_KEY;
+      const res = await fetch(
+        `https://api.football-data.org/v4/competitions/PL/matches?dateFrom=${fmt(dateFrom)}&dateTo=${fmt(dateTo)}`,
+        { headers: { 'X-Auth-Token': apiKey } }
+      );
+      if (!res.ok) throw new Error(`football-data.org: ${res.status}`);
+      const { matches } = await res.json();
+
+      const result = await api.post<{ synced: number }>('/admin/sync-fixtures', { matches });
+      showStatus('success', `Synced ${result.synced} fixtures`);
+    } catch (e) {
+      showStatus('error', `Sync failed: ${String(e)}`);
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -173,15 +199,27 @@ export default function ToolsTab() {
 
       {isAdmin && (
         <div className="card" style={{ marginTop: 16 }}>
-          <h2 className="card-title">Import PL Teams</h2>
+          <h2 className="card-title">Sync Fixtures</h2>
           <p className="text-muted" style={{ marginBottom: 16 }}>
-            One-off import of Premier League teams from football-data.org into a group.
+            Fetch Premier League fixtures and results (20 days back, 60 ahead) and store in the database.
           </p>
           {status && (
             <div className={`alert alert-${status.type === 'success' ? 'success' : 'error'}`} style={{ marginBottom: 16 }}>
               {status.msg}
             </div>
           )}
+          <button className="btn btn-primary" onClick={handleSyncFixtures} disabled={syncing}>
+            {syncing ? <><span className="spinner" /> Syncing…</> : 'Sync Now'}
+          </button>
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h2 className="card-title">Import PL Teams</h2>
+          <p className="text-muted" style={{ marginBottom: 16 }}>
+            One-off import of Premier League teams from football-data.org into a group.
+          </p>
           {groups.length === 0 ? (
             <button className="btn btn-secondary" onClick={loadGroups} disabled={loadingGroups}>
               {loadingGroups ? <><span className="spinner" /> Loading…</> : 'Load Groups'}
