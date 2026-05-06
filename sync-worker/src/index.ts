@@ -26,6 +26,7 @@ export default {
 
     const fmt = (d: Date) => d.toISOString().slice(0, 10)
     const url = `https://api.football-data.org/v4/competitions/PL/matches?dateFrom=${fmt(dateFrom)}&dateTo=${fmt(dateTo)}`
+    console.log(`Fetching: ${url}`)
 
     const res = await fetch(url, {
       headers: {
