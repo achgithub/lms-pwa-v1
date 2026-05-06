@@ -86,6 +86,36 @@ data.delete('/teams/:id', requireRole('admin'), async (c) => {
   return new Response(null, { status: 204 })
 })
 
+// ── Admin: Import PL teams from football-data.org ─────────────────────────────
+
+data.post('/admin/import-teams', requireRole('admin'), async (c) => {
+  const { groupId } = await c.req.json<{ groupId: number }>()
+  if (!groupId) return c.json({ error: 'groupId required' }, 400)
+
+  const group = await c.env.DB.prepare(`SELECT id FROM groups WHERE id = ?`).bind(groupId).first()
+  if (!group) return c.json({ error: 'Group not found' }, 404)
+
+  const res = await fetch('https://api.football-data.org/v4/competitions/PL/teams', {
+    headers: { 'X-Auth-Token': c.env.FOOTBALL_DATA_API_KEY },
+  })
+  if (!res.ok) return c.json({ error: `football-data.org error: ${res.status}` }, 502)
+
+  const { teams } = await res.json<{ teams: Array<{ id: number; name: string; crest: string }> }>()
+
+  const stmts = teams.map((t) =>
+    c.env.DB.prepare(`
+      INSERT INTO teams (group_id, name, external_id, crest_url)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(group_id, external_id) DO UPDATE SET
+        name      = excluded.name,
+        crest_url = excluded.crest_url
+    `).bind(groupId, t.name, t.id, t.crest)
+  )
+
+  await c.env.DB.batch(stmts)
+  return c.json({ imported: teams.length })
+})
+
 // ── Players ───────────────────────────────────────────────────────────────────
 
 data.get('/players', async (c) => {

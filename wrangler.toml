@@ -9,3 +9,4 @@ database_id = "d4599b40-f029-4552-bb12-27590e4e8eca"
 
 [vars]
 # JWT_SECRET is set as an encrypted Secret in the Cloudflare dashboard
+# FOOTBALL_DATA_API_KEY is set as an encrypted Secret in the Cloudflare dashboard (Pages)

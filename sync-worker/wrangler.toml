@@ -1,0 +1,15 @@
+name = "lms-sync-worker"
+main = "src/index.ts"
+compatibility_date = "2025-05-02"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "lms-db"
+database_id = "d4599b40-f029-4552-bb12-27590e4e8eca"
+
+[triggers]
+crons = ["0 */6 * * *"]
+
+[vars]
+# FOOTBALL_DATA_API_KEY must be set as an encrypted secret:
+# wrangler secret put FOOTBALL_DATA_API_KEY
