@@ -17,7 +17,7 @@ set -euo pipefail
 : "${FOOTBALL_DATA_API_KEY:?FOOTBALL_DATA_API_KEY is required}"
 : "${SYNC_SECRET:?SYNC_SECRET is required}"
 
-SEASON="${SEASON:-2024}"
+SEASON="${SEASON:-2025}"
 API_BASE="${API_BASE:-https://lms-pwa-v1.pages.dev}"
 
 FD_URL="https://api.football-data.org/v4/competitions/PL/matches?season=${SEASON}"
