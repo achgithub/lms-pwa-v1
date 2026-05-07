@@ -84,7 +84,7 @@ push.post('/notify', requireRole('admin', 'manager'), async (c) => {
   const bindings = type === 'eliminated' ? [gameId, gameId] : [gameId]
   const { results: subs } = await c.env.DB.prepare(subsSQL).bind(...bindings).all<PushSubscription>()
 
-  if (subs.length === 0) return c.json({ sent: 0 })
+  if (subs.length === 0) return c.json({ sent: 0, debug: { gameId, type, subsFound: subs.length } })
 
   const message = notifyMessage(type)
   let sent = 0
