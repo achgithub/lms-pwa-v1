@@ -65,6 +65,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
   const [savingFixtures, setSavingFixtures] = useState(false);
   const [standings, setStandings] = useState<Standing[]>([]);
   const [pendingAutoAssignments, setPendingAutoAssignments] = useState<AutoAssignment[] | null>(null);
+  const [inPicksPhase, setInPicksPhase] = useState(true);
   const [massEliminationState, setMassEliminationState] = useState<{
     candidates: string[];
     eliminatedIds: number[];
@@ -107,6 +108,12 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
         }
         setPendingPicks(initial);
 
+        // Transition to results phase automatically only if all picks were already in
+        // (i.e. a previous session finalised — don't transition on Save Picks)
+        const active = detail.participants.filter(p => p.isActive);
+        const allHave = active.length > 0 && active.every(p => initial[p.playerName] !== undefined);
+        setInPicksPhase(!allHave);
+
         // Load fixtures for this round if already set; always reset selection
         setRoundFixtures(open.fixtureIds?.length ? fixtures.filter(f => open.fixtureIds!.includes(f.id)) : []);
         setSelectedFixtureIds([]);
@@ -134,8 +141,8 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
   const allActiveHavePick = activeParticipants.every(p =>
     currentRoundPicks.some(cp => cp.playerName === p.playerName && cp.teamId != null)
   );
-  const picksPhase = !allActiveHavePick;
-  const resultsPhase = allActiveHavePick && game.status === 'active';
+  const picksPhase = inPicksPhase;
+  const resultsPhase = !inPicksPhase && allActiveHavePick && game.status === 'active';
 
   // Team group for results entry
   const picksByTeam = new Map<string, Pick[]>();
@@ -159,7 +166,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
       const updated = await db.setRoundFixtures(openRound.id, selectedFixtureIds);
       setRounds(prev => prev.map(r => r.id === updated.id ? updated : r));
       setRoundFixtures(allFixtures.filter(f => selectedFixtureIds.includes(f.id)));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      document.querySelector<HTMLElement>('.app-content')?.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
       setError(String(e));
     } finally {
@@ -192,8 +199,6 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
         });
         setPicks(prev => [...prev.filter(p => p.id !== saved.id), saved]);
       }
-
-      await load();
     } catch (e) {
       setError(String(e));
     } finally {
