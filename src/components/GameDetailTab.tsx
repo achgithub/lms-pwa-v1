@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import type { Game, Participant, Round, Pick, Team, Fixture } from '../types';
 import type { PickResult } from '../types';
 import * as db from '../db';
@@ -68,16 +68,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
   const [selectedFixtureIds, setSelectedFixtureIds] = useState<number[]>([]);
   const [roundFixtures, setRoundFixtures] = useState<Fixture[]>([]);
   const [savingFixtures, setSavingFixtures] = useState(false);
-  const fixtureListRef = useRef<HTMLDivElement>(null);
-  const upcomingRef = useRef<HTMLDivElement>(null);
   const { user, actingAsPlayer } = useAuth();
-
-  useEffect(() => {
-    const container = fixtureListRef.current;
-    const target = upcomingRef.current;
-    if (!container || !target) return;
-    container.scrollTop = target.offsetTop - container.offsetTop;
-  }, [allFixtures.length]);
 
   const load = useCallback(async () => {
     try {
@@ -369,57 +360,45 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
               <p className="text-muted" style={{ marginBottom: 12 }}>
                 Tick all games for this round. Sorted by date — includes any rescheduled games.
               </p>
-              <div ref={fixtureListRef} style={{ maxHeight: 340, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
-                {(() => {
+              {(() => {
                   const now = new Date();
-                  let dividerInserted = false;
-                  return allFixtures.map((f, i) => {
-                    const checked = selectedFixtureIds.includes(f.id);
+                  const from = new Date(now); from.setDate(now.getDate() - 14);
+                  const to   = new Date(now); to.setDate(now.getDate() + 28);
+                  const visible = allFixtures.filter(f => {
                     const d = new Date(f.utcDate);
-                    const isPast = d < now;
-                    const isFirstUpcoming = !isPast && !dividerInserted;
-                    if (isFirstUpcoming) dividerInserted = true;
-                    const dateStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-                    const timeStr = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-                    return (
-                      <div key={f.id}>
-                        {isFirstUpcoming && (
-                          <div ref={upcomingRef} style={{
-                            padding: '6px 12px',
-                            fontSize: 11,
-                            fontWeight: 700,
-                            letterSpacing: '0.08em',
-                            textTransform: 'uppercase',
-                            color: 'var(--accent)',
-                            background: 'rgba(240,192,48,0.08)',
-                            borderBottom: '1px solid var(--border)',
-                          }}>
-                            Upcoming
-                          </div>
-                        )}
-                        <label className="checkbox-row" style={{
-                          padding: '8px 12px',
-                          borderBottom: i < allFixtures.length - 1 ? '1px solid var(--border)' : 'none',
-                          opacity: isPast && !checked ? 0.35 : 1,
-                        }}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={e => setSelectedFixtureIds(prev =>
-                              e.target.checked ? [...prev, f.id] : prev.filter(id => id !== f.id)
-                            )}
-                          />
-                          <span style={{ fontSize: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: 12 }}>{dateStr} {timeStr}</span>
-                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>GW{f.matchday}</span>
-                            <span>{f.homeTeamName} vs {f.awayTeamName}</span>
-                          </span>
-                        </label>
-                      </div>
-                    );
+                    return d >= from && d <= to;
                   });
+                  if (visible.length === 0) return <p className="text-muted" style={{ padding: 12 }}>No fixtures in this window.</p>;
+                  return (
+                    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+                      {visible.map((f, i) => {
+                        const checked = selectedFixtureIds.includes(f.id);
+                        const d = new Date(f.utcDate);
+                        const dateStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+                        const timeStr = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                        return (
+                          <label key={f.id} className="checkbox-row" style={{
+                            padding: '8px 12px',
+                            borderBottom: i < visible.length - 1 ? '1px solid var(--border)' : 'none',
+                          }}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={e => setSelectedFixtureIds(prev =>
+                                e.target.checked ? [...prev, f.id] : prev.filter(id => id !== f.id)
+                              )}
+                            />
+                            <span style={{ fontSize: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 12 }}>{dateStr} {timeStr}</span>
+                              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>GW{f.matchday}</span>
+                              <span>{f.homeTeamName} vs {f.awayTeamName}</span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  );
                 })()}
-              </div>
               <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span className="text-muted">{selectedFixtureIds.length} selected</span>
                 <button
