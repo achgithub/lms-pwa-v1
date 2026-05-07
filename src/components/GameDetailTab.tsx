@@ -68,11 +68,15 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
   const [selectedFixtureIds, setSelectedFixtureIds] = useState<number[]>([]);
   const [roundFixtures, setRoundFixtures] = useState<Fixture[]>([]);
   const [savingFixtures, setSavingFixtures] = useState(false);
+  const fixtureListRef = useRef<HTMLDivElement>(null);
   const upcomingRef = useRef<HTMLDivElement>(null);
   const { user, actingAsPlayer } = useAuth();
 
   useEffect(() => {
-    upcomingRef.current?.scrollIntoView({ block: 'nearest' });
+    const container = fixtureListRef.current;
+    const target = upcomingRef.current;
+    if (!container || !target) return;
+    container.scrollTop = target.offsetTop - container.offsetTop;
   }, [allFixtures.length]);
 
   const load = useCallback(async () => {
@@ -365,7 +369,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
               <p className="text-muted" style={{ marginBottom: 12 }}>
                 Tick all games for this round. Sorted by date — includes any rescheduled games.
               </p>
-              <div style={{ maxHeight: 340, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+              <div ref={fixtureListRef} style={{ maxHeight: 340, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
                 {(() => {
                   const now = new Date();
                   let dividerInserted = false;
@@ -396,7 +400,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                         <label className="checkbox-row" style={{
                           padding: '8px 12px',
                           borderBottom: i < allFixtures.length - 1 ? '1px solid var(--border)' : 'none',
-                          background: isPast && !checked ? 'rgba(0,0,0,0.15)' : 'transparent',
+                          opacity: isPast && !checked ? 0.35 : 1,
                         }}>
                           <input
                             type="checkbox"
@@ -405,7 +409,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                               e.target.checked ? [...prev, f.id] : prev.filter(id => id !== f.id)
                             )}
                           />
-                          <span style={{ fontSize: 14, display: 'flex', gap: 10, flexWrap: 'wrap', color: isPast && !checked ? 'var(--text-muted)' : 'var(--text)' }}>
+                          <span style={{ fontSize: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                             <span style={{ fontSize: 12 }}>{dateStr} {timeStr}</span>
                             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>GW{f.matchday}</span>
                             <span>{f.homeTeamName} vs {f.awayTeamName}</span>
