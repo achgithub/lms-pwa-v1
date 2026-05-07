@@ -19,18 +19,17 @@ push.post('/subscribe', async (c) => {
 
   const userName = c.get('userName')
 
-  await c.env.DB.batch([
-    c.env.DB.prepare(`
-      INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT (user_id, endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth
-    `).bind(userId, endpoint, p256dh, auth),
-    c.env.DB.prepare(`
-      UPDATE participants SET user_id = ? WHERE player_name = ? COLLATE NOCASE AND user_id IS NULL
-    `).bind(userId, userName),
-  ])
+  await c.env.DB.prepare(`
+    INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT (user_id, endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth
+  `).bind(userId, endpoint, p256dh, auth).run()
 
-  return new Response(null, { status: 204 })
+  const linkResult = await c.env.DB.prepare(`
+    UPDATE participants SET user_id = ? WHERE player_name = ? COLLATE NOCASE
+  `).bind(userId, userName).run()
+
+  return c.json({ linked: linkResult.meta.changes })
 })
 
 push.delete('/subscribe', async (c) => {
