@@ -141,19 +141,13 @@ export function autoAssignTeams(
   const posMap = new Map(standings.map(s => [s.teamName.toLowerCase(), s]));
   const updatedAt = standings.length > 0 ? standings[0].updatedAt : null;
   const assignments: AutoAssignment[] = [];
-  const alreadyAssignedThisRound = new Set(existingPicks.map(p => p.teamName).filter(Boolean));
   const sorted = sortByStandings(teams, standings);
 
   for (const playerName of playersWithoutPicks) {
-    const available = availableTeams(playerName, sorted, existingPicks, rounds).filter(
-      t => !alreadyAssignedThisRound.has(t.name)
-    );
-    const pool = available.length > 0
-      ? available
-      : availableTeams(playerName, sorted, existingPicks, rounds);
-
-    if (pool.length > 0) {
-      const team = pool[0]; // sorted bottom-first, take the first
+    // Each player is independent — only their own previous picks restrict them
+    const available = availableTeams(playerName, sorted, existingPicks, rounds);
+    if (available.length > 0) {
+      const team = available[0]; // sorted bottom-first, take the lowest available
       const standing = posMap.get(team.name.toLowerCase());
       assignments.push({
         playerName,
@@ -161,7 +155,6 @@ export function autoAssignTeams(
         position: standing?.position ?? null,
         standingsUpdatedAt: standing ? updatedAt : null,
       });
-      alreadyAssignedThisRound.add(team.name);
     }
   }
 
