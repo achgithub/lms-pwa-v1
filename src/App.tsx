@@ -15,7 +15,7 @@ import { api } from './api/client';
 type Tab = 'setup' | 'games' | 'game-detail' | 'reports' | 'tools';
 
 function SettingsPanel({ onClose }: { onClose: () => void }) {
-  const { supported, permission, subscribed, busy, enable, disable } = usePushSubscription()
+  const { supported, permission, subscribed, busy, error, enable, disable } = usePushSubscription()
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -69,7 +69,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <span className="text-muted" style={{ fontSize: 13 }}>Enable notifications</span>
+            <span className="text-muted" style={{ fontSize: 13 }}>{error || 'Enable notifications'}</span>
             <button className="btn btn-primary btn-sm" onClick={enable} disabled={busy}>
               {busy ? <span className="spinner" /> : 'Enable'}
             </button>
