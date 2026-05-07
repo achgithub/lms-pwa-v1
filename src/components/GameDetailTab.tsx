@@ -1,15 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
-import type { Game, Participant, Round, Pick, Team, Fixture, MatchdayInfo } from '../types';
+import type { Game, Participant, Round, Pick, Team, Fixture } from '../types';
 import type { PickResult } from '../types';
 import * as db from '../db';
 import * as logic from '../gameLogic';
 import { useAuth } from '../contexts/AuthContext';
-
-function formatMatchdayOption(m: MatchdayInfo): string {
-  const d = new Date(m.firstDate);
-  const dateStr = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  return `GW${m.matchday} — w/c ${dateStr} (${m.fixtureCount} games)`;
-}
 
 function fixtureLabel(team: Team, fixtures: Fixture[]): string {
   const matches = fixtures.filter(f => f.homeTeamName === team.name || f.awayTeamName === team.name);
@@ -69,29 +63,29 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
   const [addingPlayer, setAddingPlayer] = useState(false);
 
   const [busy, setBusy] = useState(false);
-  const [matchdayOptions, setMatchdayOptions] = useState<MatchdayInfo[]>([]);
-  const [selectedMatchday, setSelectedMatchday] = useState<number | ''>('');
-  const [matchdayFixtures, setMatchdayFixtures] = useState<Fixture[]>([]);
-  const [savingMatchday, setSavingMatchday] = useState(false);
+  const [allFixtures, setAllFixtures] = useState<Fixture[]>([]);
+  const [selectedFixtureIds, setSelectedFixtureIds] = useState<number[]>([]);
+  const [roundFixtures, setRoundFixtures] = useState<Fixture[]>([]);
+  const [savingFixtures, setSavingFixtures] = useState(false);
   const { user, actingAsPlayer } = useAuth();
 
   const load = useCallback(async () => {
     try {
-      const [detail, matchdays] = await Promise.all([
+      const [detail, fixtures] = await Promise.all([
         db.getGameDetail(gameId, actingAsPlayer),
-        db.getMatchdays().catch(() => [] as MatchdayInfo[]),
+        db.getAllFixtures().catch(() => [] as Fixture[]),
       ]);
       if (!detail) { onBack(); return; }
       setGame(detail.game);
       setParticipants(detail.participants);
       setRounds(detail.rounds);
       setPicks(detail.picks);
-      setMatchdayOptions(matchdays);
+      setAllFixtures(fixtures);
 
       const t = await db.getTeamsByGroup(detail.game.groupId);
       setTeams(t);
 
-      // Pre-populate pick dropdowns from any already-saved picks for the open round
+      // Pre-populate pick dropdowns from saved picks for the open round
       const open = detail.rounds.find(
         r => r.roundNumber === detail.game.currentRound && r.status === 'open'
       );
@@ -101,21 +95,12 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
           if (pick.roundId === open.id && pick.teamId) initial[pick.playerName] = pick.teamId;
         }
         setPendingPicks(initial);
-      }
 
-      // Load fixtures for the open round's matchday if already set
-      const openRound = detail.rounds.find(
-        r => r.roundNumber === detail.game.currentRound && r.status === 'open'
-      );
-      if (openRound?.matchday) {
-        const fixtures = await db.getFixturesByMatchday(openRound.matchday).catch(() => []);
-        setMatchdayFixtures(fixtures);
+        // Load fixtures for this round if already set
+        if (open.fixtureIds?.length) {
+          setRoundFixtures(fixtures.filter(f => open.fixtureIds!.includes(f.id)));
+        }
       }
-
-      // Auto-select next upcoming matchday for the selector
-      const today = new Date().toISOString();
-      const next = matchdays.find(m => m.firstDate >= today);
-      setSelectedMatchday(next?.matchday ?? matchdays[matchdays.length - 1]?.matchday ?? '');
     } catch (e) {
       setError(String(e));
     } finally {
@@ -152,20 +137,19 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
     }
   }
 
-  // ── Set matchday ────────────────────────────────────────────────────────
+  // ── Set fixtures ─────────────────────────────────────────────────────────
 
-  async function handleSetMatchday() {
-    if (!openRound || !selectedMatchday) return;
-    setSavingMatchday(true);
+  async function handleSetFixtures() {
+    if (!openRound || selectedFixtureIds.length === 0) return;
+    setSavingFixtures(true);
     try {
-      const updated = await db.setRoundMatchday(openRound.id, selectedMatchday as number);
+      const updated = await db.setRoundFixtures(openRound.id, selectedFixtureIds);
       setRounds(prev => prev.map(r => r.id === updated.id ? updated : r));
-      const fixtures = await db.getFixturesByMatchday(selectedMatchday as number);
-      setMatchdayFixtures(fixtures);
+      setRoundFixtures(allFixtures.filter(f => selectedFixtureIds.includes(f.id)));
     } catch (e) {
       setError(String(e));
     } finally {
-      setSavingMatchday(false);
+      setSavingFixtures(false);
     }
   }
 
@@ -202,7 +186,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
         .map(p => p.playerName);
 
       if (playersWithoutPicks.length > 0) {
-        const matchdayTeamNames = new Set(matchdayFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
+        const matchdayTeamNames = new Set(roundFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
         const teamsForAssign = matchdayTeamNames.size > 0 ? teams.filter(t => matchdayTeamNames.has(t.name)) : teams;
         const assignments = logic.autoAssignTeams(playersWithoutPicks, teamsForAssign, latestRoundPicks, rounds);
         for (const { playerName, team } of assignments) {
@@ -368,31 +352,49 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
         </div>
       ) : openRound ? (
         <>
-          {/* ── Matchday Selector ── */}
-          {!actingAsPlayer && !openRound.matchday && matchdayOptions.length > 0 && (
+          {/* ── Fixture Picker ── */}
+          {!actingAsPlayer && !openRound.fixtureIds?.length && allFixtures.length > 0 && (
             <div className="card">
-              <h3 className="card-title">Set Gameweek for Round {game.currentRound}</h3>
-              <p className="text-muted" style={{ marginBottom: 16 }}>
-                Select the gameweek this round corresponds to. Sorted by earliest fixture date.
+              <h3 className="card-title">Select Fixtures for Round {game.currentRound}</h3>
+              <p className="text-muted" style={{ marginBottom: 12 }}>
+                Tick all games for this round. Sorted by date — includes any rescheduled games.
               </p>
-              <div className="form-row">
-                <div className="form-group">
-                  <select
-                    value={selectedMatchday}
-                    onChange={e => setSelectedMatchday(Number(e.target.value))}
-                  >
-                    <option value="">Select gameweek…</option>
-                    {matchdayOptions.map(m => (
-                      <option key={m.matchday} value={m.matchday}>{formatMatchdayOption(m)}</option>
-                    ))}
-                  </select>
-                </div>
+              <div style={{ maxHeight: 340, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+                {allFixtures.map((f, i) => {
+                  const checked = selectedFixtureIds.includes(f.id);
+                  const d = new Date(f.utcDate);
+                  const dateStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+                  const isPast = d < new Date();
+                  return (
+                    <label key={f.id} className="checkbox-row" style={{
+                      padding: '8px 12px',
+                      borderBottom: i < allFixtures.length - 1 ? '1px solid var(--border)' : 'none',
+                      opacity: isPast && !checked ? 0.5 : 1,
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={e => setSelectedFixtureIds(prev =>
+                          e.target.checked ? [...prev, f.id] : prev.filter(id => id !== f.id)
+                        )}
+                      />
+                      <span style={{ fontSize: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        <span className="text-muted">{dateStr}</span>
+                        <span className="text-muted" style={{ fontSize: 12 }}>GW{f.matchday}</span>
+                        <span>{f.homeTeamName} vs {f.awayTeamName}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span className="text-muted">{selectedFixtureIds.length} selected</span>
                 <button
                   className="btn btn-primary"
-                  onClick={handleSetMatchday}
-                  disabled={!selectedMatchday || savingMatchday}
+                  onClick={handleSetFixtures}
+                  disabled={selectedFixtureIds.length === 0 || savingFixtures}
                 >
-                  {savingMatchday ? <><span className="spinner" /> Saving…</> : 'Confirm Gameweek'}
+                  {savingFixtures ? <><span className="spinner" /> Saving…</> : `Confirm (${selectedFixtureIds.length} games)`}
                 </button>
               </div>
             </div>
@@ -404,7 +406,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
               <div className="section-header">
                 <h3 className="card-title" style={{ marginBottom: 0 }}>
                   Round {game.currentRound} — Assign Picks
-                  {openRound.matchday && <span className="text-muted" style={{ fontWeight: 400, marginLeft: 8 }}>GW{openRound.matchday}</span>}
+                  {openRound.fixtureIds?.length ? <span className="text-muted" style={{ fontWeight: 400, marginLeft: 8 }}>{openRound.fixtureIds.length} fixtures</span> : null}
                 </h3>
                 {!actingAsPlayer && (
                   <button className="btn btn-primary" onClick={saveAllPicks} disabled={busy}>
@@ -424,7 +426,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                   <tbody>
                     {visibleParticipants.map(p => {
                       const available = logic.availableTeams(p.playerName, teams, picks, rounds);
-                      const matchdayTeamNames = new Set(matchdayFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
+                      const matchdayTeamNames = new Set(roundFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
                       const filteredAvailable = matchdayTeamNames.size > 0
                         ? available.filter(t => matchdayTeamNames.has(t.name))
                         : available;
@@ -438,7 +440,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                             >
                               <option value="">Select team…</option>
                               {filteredAvailable.map(t => (
-                                <option key={t.id} value={t.id}>{fixtureLabel(t, matchdayFixtures)}</option>
+                                <option key={t.id} value={t.id}>{fixtureLabel(t, roundFixtures)}</option>
                               ))}
                             </select>
                           </td>
@@ -457,7 +459,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
               <div className="section-header">
                 <h3 className="card-title" style={{ marginBottom: 0 }}>
                   Round {game.currentRound} — Enter Results
-                  {openRound.matchday && <span className="text-muted" style={{ fontWeight: 400, marginLeft: 8 }}>GW{openRound.matchday}</span>}
+                  {openRound.fixtureIds?.length ? <span className="text-muted" style={{ fontWeight: 400, marginLeft: 8 }}>{openRound.fixtureIds.length} fixtures</span> : null}
                 </h3>
                 {!actingAsPlayer && (
                   <button
@@ -470,9 +472,9 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                 )}
               </div>
 
-              {matchdayFixtures.length > 0 ? (() => {
-                const fixtureTeamNames = new Set(matchdayFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
-                const fixturesWithPicks = matchdayFixtures.filter(
+              {roundFixtures.length > 0 ? (() => {
+                const fixtureTeamNames = new Set(roundFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
+                const fixturesWithPicks = roundFixtures.filter(
                   f => picksByTeam.has(f.homeTeamName) || picksByTeam.has(f.awayTeamName)
                 );
                 const unpairedTeams = [...picksByTeam.keys()].filter(t => !fixtureTeamNames.has(t));

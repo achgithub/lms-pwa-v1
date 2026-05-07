@@ -18,6 +18,14 @@ function mapPick(row: Record<string, unknown>): Pick {
   return { ...row, autoAssigned: Boolean(row.autoAssigned) } as Pick
 }
 
+function mapRound(row: Record<string, unknown>): Round {
+  const raw = row.fixtureIds
+  return {
+    ...row,
+    fixtureIds: typeof raw === 'string' ? JSON.parse(raw) : (raw ?? undefined),
+  } as Round
+}
+
 const GAME_SELECT = `
   SELECT g.id, g.name, g.group_id as groupId, gr.name as groupName,
          g.status, g.winner_name as winnerName,
@@ -162,53 +170,26 @@ data.post('/admin/sync-fixtures', requireRole('admin'), async (c) => {
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
-data.get('/fixtures/matchdays', async (c) => {
-  const { results } = await c.env.DB.prepare(`
-    SELECT matchday, MIN(utc_date) as firstDate, COUNT(*) as fixtureCount
-    FROM fixtures
-    GROUP BY matchday
-    ORDER BY MIN(utc_date) ASC
-  `).all<{ matchday: number; firstDate: string; fixtureCount: number }>()
-  return c.json(results)
-})
-
-data.get('/fixtures/matchday/:matchday', async (c) => {
-  const matchday = Number(c.req.param('matchday'))
-  // Find the Monday–Sunday window containing the first fixture of this matchday,
-  // so rescheduled games from other GWs playing that same week are included.
-  const first = await c.env.DB.prepare(
-    `SELECT MIN(utc_date) as firstDate FROM fixtures WHERE matchday = ?`
-  ).bind(matchday).first<{ firstDate: string | null }>()
-  if (!first?.firstDate) return c.json([])
-
-  const d = new Date(first.firstDate)
-  const utcDay = d.getUTCDay() // 0=Sun, 1=Mon … 6=Sat
-  const diffToMonday = utcDay === 0 ? -6 : 1 - utcDay
-  const monday = new Date(d)
-  monday.setUTCDate(d.getUTCDate() + diffToMonday)
-  monday.setUTCHours(0, 0, 0, 0)
-  const sunday = new Date(monday)
-  sunday.setUTCDate(monday.getUTCDate() + 6)
-  sunday.setUTCHours(23, 59, 59, 999)
-
+data.get('/fixtures', async (c) => {
   const { results } = await c.env.DB.prepare(`
     SELECT id, matchday, utc_date as utcDate, status,
            home_team_name as homeTeamName, away_team_name as awayTeamName,
            home_score as homeScore, away_score as awayScore, winner
-    FROM fixtures WHERE utc_date >= ? AND utc_date <= ? ORDER BY utc_date ASC
-  `).bind(monday.toISOString(), sunday.toISOString()).all()
+    FROM fixtures ORDER BY utc_date ASC
+  `).all()
   return c.json(results)
 })
 
-data.patch('/rounds/:id/matchday', requireRole('admin', 'manager'), async (c) => {
+data.patch('/rounds/:id/fixtures', requireRole('admin', 'manager'), async (c) => {
   const id = Number(c.req.param('id'))
-  const { matchday } = await c.req.json<{ matchday: number }>()
-  if (!matchday) return c.json({ error: 'matchday required' }, 400)
-  await c.env.DB.prepare(`UPDATE rounds SET matchday = ? WHERE id = ?`).bind(matchday, id).run()
-  const round = await c.env.DB.prepare(
-    `SELECT id, game_id as gameId, round_number as roundNumber, status, matchday, created_at as createdAt FROM rounds WHERE id = ?`
-  ).bind(id).first<Round>()
-  return c.json(round)
+  const { fixtureIds } = await c.req.json<{ fixtureIds: number[] }>()
+  if (!Array.isArray(fixtureIds)) return c.json({ error: 'fixtureIds array required' }, 400)
+  await c.env.DB.prepare(`UPDATE rounds SET fixture_ids = ? WHERE id = ?`)
+    .bind(JSON.stringify(fixtureIds), id).run()
+  const row = await c.env.DB.prepare(
+    `SELECT id, game_id as gameId, round_number as roundNumber, status, fixture_ids as fixtureIds, created_at as createdAt FROM rounds WHERE id = ?`
+  ).bind(id).first<Record<string, unknown>>()
+  return c.json(mapRound(row!))
 })
 
 // ── Players ───────────────────────────────────────────────────────────────────
@@ -324,7 +305,7 @@ data.get('/games/:id', async (c) => {
       `SELECT id, game_id as gameId, player_name as playerName, is_active as isActive, eliminated_in_round as eliminatedInRound, created_at as createdAt FROM participants WHERE game_id = ?`
     ).bind(id).all<Record<string, unknown>>(),
     c.env.DB.prepare(
-      `SELECT id, game_id as gameId, round_number as roundNumber, status, matchday, created_at as createdAt FROM rounds WHERE game_id = ?`
+      `SELECT id, game_id as gameId, round_number as roundNumber, status, fixture_ids as fixtureIds, created_at as createdAt FROM rounds WHERE game_id = ?`
     ).bind(id).all<Round>(),
     c.env.DB.prepare(
       `SELECT id, game_id as gameId, round_id as roundId, player_name as playerName, team_id as teamId, team_name as teamName, result, auto_assigned as autoAssigned, created_at as createdAt FROM picks WHERE game_id = ?`
@@ -334,7 +315,7 @@ data.get('/games/:id', async (c) => {
   return c.json({
     game: mapGame(game),
     participants: parts.results.map(mapParticipant),
-    rounds: rounds.results,
+    rounds: rounds.results.map(mapRound),
     picks: picks.results.map(mapPick),
   })
 })
@@ -476,7 +457,7 @@ data.get('/sync', async (c) => {
     ;[gameRows, participantRows, roundRows, pickRows] = await Promise.all([
       c.env.DB.prepare(`${GAME_SELECT} ORDER BY g.created_at DESC`).all<Record<string, unknown>>().then(r => r.results),
       c.env.DB.prepare(`SELECT id, game_id as gameId, player_name as playerName, is_active as isActive, eliminated_in_round as eliminatedInRound, created_at as createdAt FROM participants`).all<Record<string, unknown>>().then(r => r.results),
-      c.env.DB.prepare(`SELECT id, game_id as gameId, round_number as roundNumber, status, matchday, created_at as createdAt FROM rounds`).all<Round>().then(r => r.results),
+      c.env.DB.prepare(`SELECT id, game_id as gameId, round_number as roundNumber, status, fixture_ids as fixtureIds, created_at as createdAt FROM rounds`).all<Round>().then(r => r.results),
       c.env.DB.prepare(`SELECT id, game_id as gameId, round_id as roundId, player_name as playerName, team_id as teamId, team_name as teamName, result, auto_assigned as autoAssigned, created_at as createdAt FROM picks`).all<Record<string, unknown>>().then(r => r.results),
     ]) as [Record<string, unknown>[], Record<string, unknown>[], Round[], Record<string, unknown>[]]
   } else {
@@ -498,7 +479,7 @@ data.get('/sync', async (c) => {
       ;[gameRows, participantRows, roundRows, pickRows] = await Promise.all([
         c.env.DB.prepare(`${GAME_SELECT} WHERE g.id IN (${ph}) ORDER BY g.created_at DESC`).bind(...ids).all<Record<string, unknown>>().then(r => r.results),
         c.env.DB.prepare(`SELECT id, game_id as gameId, player_name as playerName, is_active as isActive, eliminated_in_round as eliminatedInRound, created_at as createdAt FROM participants WHERE game_id IN (${ph})`).bind(...ids).all<Record<string, unknown>>().then(r => r.results),
-        c.env.DB.prepare(`SELECT id, game_id as gameId, round_number as roundNumber, status, matchday, created_at as createdAt FROM rounds WHERE game_id IN (${ph})`).bind(...ids).all<Round>().then(r => r.results),
+        c.env.DB.prepare(`SELECT id, game_id as gameId, round_number as roundNumber, status, fixture_ids as fixtureIds, created_at as createdAt FROM rounds WHERE game_id IN (${ph})`).bind(...ids).all<Round>().then(r => r.results),
         c.env.DB.prepare(`SELECT id, game_id as gameId, round_id as roundId, player_name as playerName, team_id as teamId, team_name as teamName, result, auto_assigned as autoAssigned, created_at as createdAt FROM picks WHERE game_id IN (${ph})`).bind(...ids).all<Record<string, unknown>>().then(r => r.results),
       ]) as [Record<string, unknown>[], Record<string, unknown>[], Round[], Record<string, unknown>[]]
     }
@@ -510,7 +491,7 @@ data.get('/sync', async (c) => {
     players: players.results,
     games: gameRows.map(mapGame),
     participants: participantRows.map(mapParticipant),
-    rounds: roundRows,
+    rounds: roundRows.map(mapRound),
     picks: pickRows.map(mapPick),
   })
 })

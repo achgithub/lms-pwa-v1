@@ -64,14 +64,8 @@ export interface Round {
   gameId: number;
   roundNumber: number;
   status: RoundStatus;
-  matchday?: number;
+  fixtureIds?: number[];
   createdAt: string;
-}
-
-export interface MatchdayInfo {
-  matchday: number;
-  firstDate: string;
-  fixtureCount: number;
 }
 
 export interface Fixture {
