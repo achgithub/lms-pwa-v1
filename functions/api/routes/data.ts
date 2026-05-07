@@ -174,12 +174,29 @@ data.get('/fixtures/matchdays', async (c) => {
 
 data.get('/fixtures/matchday/:matchday', async (c) => {
   const matchday = Number(c.req.param('matchday'))
+  // Find the Monday–Sunday window containing the first fixture of this matchday,
+  // so rescheduled games from other GWs playing that same week are included.
+  const first = await c.env.DB.prepare(
+    `SELECT MIN(utc_date) as firstDate FROM fixtures WHERE matchday = ?`
+  ).bind(matchday).first<{ firstDate: string | null }>()
+  if (!first?.firstDate) return c.json([])
+
+  const d = new Date(first.firstDate)
+  const utcDay = d.getUTCDay() // 0=Sun, 1=Mon … 6=Sat
+  const diffToMonday = utcDay === 0 ? -6 : 1 - utcDay
+  const monday = new Date(d)
+  monday.setUTCDate(d.getUTCDate() + diffToMonday)
+  monday.setUTCHours(0, 0, 0, 0)
+  const sunday = new Date(monday)
+  sunday.setUTCDate(monday.getUTCDate() + 6)
+  sunday.setUTCHours(23, 59, 59, 999)
+
   const { results } = await c.env.DB.prepare(`
     SELECT id, matchday, utc_date as utcDate, status,
            home_team_name as homeTeamName, away_team_name as awayTeamName,
            home_score as homeScore, away_score as awayScore, winner
-    FROM fixtures WHERE matchday = ? ORDER BY utc_date ASC
-  `).bind(matchday).all()
+    FROM fixtures WHERE utc_date >= ? AND utc_date <= ? ORDER BY utc_date ASC
+  `).bind(monday.toISOString(), sunday.toISOString()).all()
   return c.json(results)
 })
 

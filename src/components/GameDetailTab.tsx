@@ -25,6 +25,25 @@ function fixtureLabel(team: Team, fixtures: Fixture[]): string {
   return `${team.name} — ${parts.join(', ')}`;
 }
 
+type FixtureOutcome = 'home' | 'draw' | 'away' | 'postponed';
+
+function outcomeToResults(outcome: FixtureOutcome): { home: PickResult; away: PickResult } {
+  if (outcome === 'home')      return { home: 'win',       away: 'loss' };
+  if (outcome === 'away')      return { home: 'loss',      away: 'win' };
+  if (outcome === 'draw')      return { home: 'draw',      away: 'draw' };
+  return                              { home: 'postponed', away: 'postponed' };
+}
+
+function activeOutcome(fixture: Fixture, pendingResults: Record<string, PickResult>): FixtureOutcome | null {
+  const hr = pendingResults[fixture.homeTeamName];
+  if (!hr) return null;
+  if (hr === 'win')       return 'home';
+  if (hr === 'loss')      return 'away';
+  if (hr === 'draw')      return 'draw';
+  if (hr === 'postponed') return 'postponed';
+  return null;
+}
+
 interface Props {
   gameId: number;
   onBack: () => void;
@@ -71,6 +90,18 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
 
       const t = await db.getTeamsByGroup(detail.game.groupId);
       setTeams(t);
+
+      // Pre-populate pick dropdowns from any already-saved picks for the open round
+      const open = detail.rounds.find(
+        r => r.roundNumber === detail.game.currentRound && r.status === 'open'
+      );
+      if (open) {
+        const initial: Record<string, number> = {};
+        for (const pick of detail.picks) {
+          if (pick.roundId === open.id && pick.teamId) initial[pick.playerName] = pick.teamId;
+        }
+        setPendingPicks(initial);
+      }
 
       // Load fixtures for the open round's matchday if already set
       const openRound = detail.rounds.find(
@@ -138,65 +169,52 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
     }
   }
 
-  // ── Assign pick ─────────────────────────────────────────────────────────
+  // ── Save all picks ───────────────────────────────────────────────────────
 
-  async function savePendingPick(playerName: string) {
-    if (!openRound) return;
-    const teamId = pendingPicks[playerName];
-    if (!teamId) return;
-    const team = teams.find(t => t.id === teamId);
-    if (!team) return;
-
-    // Check if pick already exists for this player in this round
-    const existing = currentRoundPicks.find(p => p.playerName === playerName);
-
-    try {
-      const saved = await db.upsertPick({
-        id: existing?.id,
-        gameId,
-        roundId: openRound.id,
-        playerName,
-        teamId: team.id,
-        teamName: team.name,
-        autoAssigned: false,
-      });
-      setPicks(prev => {
-        const without = prev.filter(p => p.id !== saved.id);
-        return [...without, saved];
-      });
-      setPendingPicks(prev => { const n = { ...prev }; delete n[playerName]; return n; });
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  async function finalizePicks() {
+  async function saveAllPicks() {
     if (!openRound) return;
     setBusy(true);
     setError('');
     try {
-      const playersWithoutPicks = activeParticipants
-        .filter(p => !currentRoundPicks.some(cp => cp.playerName === p.playerName && cp.teamId != null))
-        .map(p => p.playerName);
-
-      const matchdayTeamNames = new Set(matchdayFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
-      const teamsForAssign = matchdayTeamNames.size > 0
-        ? teams.filter(t => matchdayTeamNames.has(t.name))
-        : teams;
-      const assignments = logic.autoAssignTeams(playersWithoutPicks, teamsForAssign, currentRoundPicks, rounds);
-      const newPicks: Pick[] = [];
-      for (const { playerName, team } of assignments) {
+      // Save manually set picks
+      for (const [playerName, teamId] of Object.entries(pendingPicks)) {
+        if (!teamId) continue;
+        const team = teams.find(t => t.id === teamId);
+        if (!team) continue;
+        const existing = currentRoundPicks.find(p => p.playerName === playerName);
         const saved = await db.upsertPick({
+          id: existing?.id,
           gameId,
           roundId: openRound.id,
           playerName,
           teamId: team.id,
           teamName: team.name,
-          autoAssigned: true,
+          autoAssigned: false,
         });
-        newPicks.push(saved);
+        setPicks(prev => [...prev.filter(p => p.id !== saved.id), saved]);
       }
-      setPicks(prev => [...prev, ...newPicks]);
+
+      // Auto-assign any players still without a pick
+      const latestPicks = await db.getPicks(gameId);
+      const latestRoundPicks = latestPicks.filter(p => p.roundId === openRound.id);
+      const playersWithoutPicks = activeParticipants
+        .filter(p => !latestRoundPicks.some(cp => cp.playerName === p.playerName && cp.teamId != null))
+        .map(p => p.playerName);
+
+      if (playersWithoutPicks.length > 0) {
+        const matchdayTeamNames = new Set(matchdayFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
+        const teamsForAssign = matchdayTeamNames.size > 0 ? teams.filter(t => matchdayTeamNames.has(t.name)) : teams;
+        const assignments = logic.autoAssignTeams(playersWithoutPicks, teamsForAssign, latestRoundPicks, rounds);
+        for (const { playerName, team } of assignments) {
+          const saved = await db.upsertPick({
+            gameId, roundId: openRound.id, playerName,
+            teamId: team.id, teamName: team.name, autoAssigned: true,
+          });
+          setPicks(prev => [...prev.filter(p => p.id !== saved.id), saved]);
+        }
+      }
+
+      await load();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -389,12 +407,8 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                   {openRound.matchday && <span className="text-muted" style={{ fontWeight: 400, marginLeft: 8 }}>GW{openRound.matchday}</span>}
                 </h3>
                 {!actingAsPlayer && (
-                  <button
-                    className="btn btn-primary"
-                    onClick={finalizePicks}
-                    disabled={busy}
-                  >
-                    {busy ? <><span className="spinner" /> Working…</> : 'Finalize Picks (Auto-assign remaining)'}
+                  <button className="btn btn-primary" onClick={saveAllPicks} disabled={busy}>
+                    {busy ? <><span className="spinner" /> Saving…</> : 'Save Picks'}
                   </button>
                 )}
               </div>
@@ -404,53 +418,29 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                   <thead>
                     <tr>
                       <th>Player</th>
-                      <th>Current Pick</th>
-                      <th>Assign Team</th>
-                      <th></th>
+                      <th>Pick</th>
                     </tr>
                   </thead>
                   <tbody>
                     {visibleParticipants.map(p => {
-                      const existingPick = currentRoundPicks.find(cp => cp.playerName === p.playerName);
                       const available = logic.availableTeams(p.playerName, teams, picks, rounds);
-                      const selectedId = pendingPicks[p.playerName] ?? '';
-
                       const matchdayTeamNames = new Set(matchdayFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
                       const filteredAvailable = matchdayTeamNames.size > 0
                         ? available.filter(t => matchdayTeamNames.has(t.name))
                         : available;
-
                       return (
                         <tr key={p.id}>
                           <td style={{ fontWeight: 600 }}>{p.playerName}</td>
                           <td>
-                            {existingPick?.teamName
-                              ? <span style={{ color: 'var(--info)' }}>{existingPick.teamName}{existingPick.autoAssigned ? ' (auto)' : ''}</span>
-                              : <span className="text-muted">—</span>
-                            }
-                          </td>
-                          <td>
                             <select
-                              value={selectedId}
+                              value={pendingPicks[p.playerName] ?? ''}
                               onChange={e => setPendingPicks(prev => ({ ...prev, [p.playerName]: Number(e.target.value) }))}
-                              disabled={!!existingPick?.teamName}
                             >
                               <option value="">Select team…</option>
                               {filteredAvailable.map(t => (
                                 <option key={t.id} value={t.id}>{fixtureLabel(t, matchdayFixtures)}</option>
                               ))}
                             </select>
-                          </td>
-                          <td>
-                            {!existingPick?.teamName && (
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                onClick={() => savePendingPick(p.playerName)}
-                                disabled={!pendingPicks[p.playerName]}
-                              >
-                                Save
-                              </button>
-                            )}
                           </td>
                         </tr>
                       );
@@ -465,7 +455,10 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
           {resultsPhase && (
             <div className="card">
               <div className="section-header">
-                <h3 className="card-title" style={{ marginBottom: 0 }}>Round {game.currentRound} — Enter Results</h3>
+                <h3 className="card-title" style={{ marginBottom: 0 }}>
+                  Round {game.currentRound} — Enter Results
+                  {openRound.matchday && <span className="text-muted" style={{ fontWeight: 400, marginLeft: 8 }}>GW{openRound.matchday}</span>}
+                </h3>
                 {!actingAsPlayer && (
                   <button
                     className="btn btn-success"
@@ -477,39 +470,91 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                 )}
               </div>
 
-              <p className="text-muted" style={{ marginBottom: 16 }}>
-                Set a result for each team. All players on the same team get the same result.
-              </p>
+              {matchdayFixtures.length > 0 ? (() => {
+                const fixtureTeamNames = new Set(matchdayFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
+                const fixturesWithPicks = matchdayFixtures.filter(
+                  f => picksByTeam.has(f.homeTeamName) || picksByTeam.has(f.awayTeamName)
+                );
+                const unpairedTeams = [...picksByTeam.keys()].filter(t => !fixtureTeamNames.has(t));
 
-              {[...picksByTeam.entries()].map(([teamName, teamPicks]) => (
-                <div key={teamName} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '12px 0',
-                  borderBottom: '1px solid var(--border)',
-                  flexWrap: 'wrap',
-                  gap: 12,
-                }}>
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{teamName}</div>
-                    <div className="text-muted" style={{ fontSize: 13 }}>
-                      {teamPicks.map(p => p.playerName).join(', ')}
+                return (
+                  <>
+                    {fixturesWithPicks.map(f => {
+                      const homePicks = picksByTeam.get(f.homeTeamName) ?? [];
+                      const awayPicks = picksByTeam.get(f.awayTeamName) ?? [];
+                      const outcome = activeOutcome(f, pendingResults);
+                      const dateStr = new Date(f.utcDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+                      return (
+                        <div key={f.id} style={{ padding: '14px 0', borderBottom: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 700 }}>{f.homeTeamName}</span>
+                            <span className="text-muted">vs</span>
+                            <span style={{ fontWeight: 700 }}>{f.awayTeamName}</span>
+                            <span className="text-muted" style={{ fontSize: 13 }}>{dateStr}</span>
+                          </div>
+                          <div className="text-muted" style={{ fontSize: 13, marginBottom: 10 }}>
+                            {homePicks.length > 0 && <span>{f.homeTeamName}: <strong>{homePicks.map(p => p.playerName).join(', ')}</strong></span>}
+                            {homePicks.length > 0 && awayPicks.length > 0 && <span> · </span>}
+                            {awayPicks.length > 0 && <span>{f.awayTeamName}: <strong>{awayPicks.map(p => p.playerName).join(', ')}</strong></span>}
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {([
+                              { key: 'home',      label: `${f.homeTeamName} Win`, css: 'active-win' },
+                              { key: 'draw',      label: 'Draw',                  css: 'active-draw' },
+                              { key: 'away',      label: `${f.awayTeamName} Win`, css: 'active-win' },
+                              { key: 'postponed', label: 'Postponed',             css: 'active-postponed' },
+                            ] as { key: FixtureOutcome; label: string; css: string }[]).map(({ key, label, css }) => (
+                              <button
+                                key={key}
+                                className={`result-btn ${outcome === key ? css : ''}`}
+                                onClick={() => {
+                                  const { home, away } = outcomeToResults(key);
+                                  setPendingResults(prev => ({ ...prev, [f.homeTeamName]: home, [f.awayTeamName]: away }));
+                                }}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {unpairedTeams.map(teamName => {
+                      const teamPicks = picksByTeam.get(teamName) ?? [];
+                      return (
+                        <div key={teamName} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 12 }}>
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{teamName}</div>
+                            <div className="text-muted" style={{ fontSize: 13 }}>{teamPicks.map(p => p.playerName).join(', ')}</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            {(['win', 'loss', 'draw', 'postponed'] as PickResult[]).map(r => (
+                              <button key={r} className={`result-btn ${pendingResults[teamName] === r ? `active-${r}` : ''}`}
+                                onClick={() => setPendingResults(prev => ({ ...prev, [teamName]: r }))}>{r}</button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                );
+              })() : (
+                // Fallback: no fixture data
+                [...picksByTeam.entries()].map(([teamName, teamPicks]) => (
+                  <div key={teamName} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 12 }}>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{teamName}</div>
+                      <div className="text-muted" style={{ fontSize: 13 }}>{teamPicks.map(p => p.playerName).join(', ')}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {(['win', 'loss', 'draw', 'postponed'] as PickResult[]).map(r => (
+                        <button key={r} className={`result-btn ${pendingResults[teamName] === r ? `active-${r}` : ''}`}
+                          onClick={() => setPendingResults(prev => ({ ...prev, [teamName]: r }))}>{r}</button>
+                      ))}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {(['win', 'loss', 'draw', 'postponed'] as PickResult[]).map(r => (
-                      <button
-                        key={r}
-                        className={`result-btn ${pendingResults[teamName] === r ? `active-${r}` : ''}`}
-                        onClick={() => setPendingResults(prev => ({ ...prev, [teamName]: r }))}
-                      >
-                        {r}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           )}
         </>
