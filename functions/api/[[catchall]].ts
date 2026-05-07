@@ -40,8 +40,9 @@ app.route('/auth', authRoutes)
 app.use('*', async (c, next) => {
   if (c.req.path.startsWith('/api/auth/')) return next()
 
-  // Allow SYNC_SECRET bearer token to call sync-fixtures without a user JWT
-  if (c.req.method === 'POST' && c.req.path === '/api/admin/sync-fixtures') {
+  // Allow SYNC_SECRET bearer token for curl-based admin sync endpoints
+  const syncPaths = ['/api/admin/sync-fixtures', '/api/admin/import-teams']
+  if (c.req.method === 'POST' && syncPaths.includes(c.req.path)) {
     const syncSecret = c.env.SYNC_SECRET
     const header = c.req.header('Authorization')
     if (syncSecret && header === `Bearer ${syncSecret}`) {

@@ -86,6 +86,33 @@ data.delete('/teams/:id', requireRole('admin'), async (c) => {
   return new Response(null, { status: 204 })
 })
 
+// ── Admin: Import PL teams from curl-posted football-data.org payload ────────
+
+data.post('/admin/import-teams', requireRole('admin'), async (c) => {
+  const { groupId, teams } = await c.req.json<{
+    groupId: number
+    teams: Array<{ id: number; name: string; crest: string }>
+  }>()
+  if (!groupId) return c.json({ error: 'groupId required' }, 400)
+  if (!Array.isArray(teams) || teams.length === 0) return c.json({ error: 'teams array required' }, 400)
+
+  const group = await c.env.DB.prepare(`SELECT id FROM groups WHERE id = ?`).bind(groupId).first()
+  if (!group) return c.json({ error: 'Group not found' }, 404)
+
+  const stmts = teams.map((t) =>
+    c.env.DB.prepare(`
+      INSERT INTO teams (group_id, name, external_id, crest_url)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(group_id, external_id) DO UPDATE SET
+        name      = excluded.name,
+        crest_url = excluded.crest_url
+    `).bind(groupId, t.name, t.id, t.crest)
+  )
+
+  await c.env.DB.batch(stmts)
+  return c.json({ imported: teams.length })
+})
+
 // ── Admin: Sync fixtures from curl-posted football-data.org payload ──────────
 
 interface FDMatch {
