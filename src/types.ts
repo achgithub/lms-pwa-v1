@@ -89,6 +89,7 @@ export interface Pick {
   playerName: string;
   teamId?: number;
   teamName?: string;
+  fixtureId?: number;
   result?: PickResult;
   autoAssigned: boolean;
   createdAt: string;

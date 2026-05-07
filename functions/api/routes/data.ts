@@ -15,7 +15,7 @@ function mapParticipant(row: Record<string, unknown>): Participant {
 }
 
 function mapPick(row: Record<string, unknown>): Pick {
-  return { ...row, autoAssigned: Boolean(row.autoAssigned) } as Pick
+  return { ...row, autoAssigned: Boolean(row.autoAssigned), fixtureId: row.fixtureId ?? undefined } as Pick
 }
 
 function mapRound(row: Record<string, unknown>): Round {
@@ -342,7 +342,7 @@ data.get('/games/:id', async (c) => {
       `SELECT id, game_id as gameId, round_number as roundNumber, status, fixture_ids as fixtureIds, created_at as createdAt FROM rounds WHERE game_id = ?`
     ).bind(id).all<Round>(),
     c.env.DB.prepare(
-      `SELECT id, game_id as gameId, round_id as roundId, player_name as playerName, team_id as teamId, team_name as teamName, result, auto_assigned as autoAssigned, created_at as createdAt FROM picks WHERE game_id = ?`
+      `SELECT id, game_id as gameId, round_id as roundId, player_name as playerName, team_id as teamId, team_name as teamName, result, auto_assigned as autoAssigned, fixture_id as fixtureId, created_at as createdAt FROM picks WHERE game_id = ?`
     ).bind(id).all<Record<string, unknown>>(),
   ])
 
@@ -384,7 +384,7 @@ data.post('/games/:id/participants', async (c) => {
 data.put('/picks', async (c) => {
   const body = await c.req.json<{
     id?: number; gameId: number; roundId: number; playerName: string
-    teamId?: number; teamName?: string; result?: string; autoAssigned: boolean
+    teamId?: number; teamName?: string; fixtureId?: number; result?: string; autoAssigned: boolean
   }>()
 
   // Players can only submit picks for themselves
@@ -395,18 +395,19 @@ data.put('/picks', async (c) => {
   }
 
   const row = await c.env.DB.prepare(`
-    INSERT INTO picks (game_id, round_id, player_name, team_id, team_name, result, auto_assigned)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO picks (game_id, round_id, player_name, team_id, team_name, result, auto_assigned, fixture_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (game_id, round_id, player_name) DO UPDATE SET
       team_id = excluded.team_id, team_name = excluded.team_name,
-      result = excluded.result, auto_assigned = excluded.auto_assigned
+      result = excluded.result, auto_assigned = excluded.auto_assigned,
+      fixture_id = excluded.fixture_id
     RETURNING id, game_id as gameId, round_id as roundId, player_name as playerName,
               team_id as teamId, team_name as teamName, result, auto_assigned as autoAssigned,
-              created_at as createdAt
+              fixture_id as fixtureId, created_at as createdAt
   `).bind(
     body.gameId, body.roundId, body.playerName,
     body.teamId ?? null, body.teamName ?? null,
-    body.result ?? null, body.autoAssigned ? 1 : 0
+    body.result ?? null, body.autoAssigned ? 1 : 0, body.fixtureId ?? null
   ).first<Record<string, unknown>>()
 
   return c.json(mapPick(row!))
@@ -492,7 +493,7 @@ data.get('/sync', async (c) => {
       c.env.DB.prepare(`${GAME_SELECT} ORDER BY g.created_at DESC`).all<Record<string, unknown>>().then(r => r.results),
       c.env.DB.prepare(`SELECT id, game_id as gameId, player_name as playerName, is_active as isActive, eliminated_in_round as eliminatedInRound, created_at as createdAt FROM participants`).all<Record<string, unknown>>().then(r => r.results),
       c.env.DB.prepare(`SELECT id, game_id as gameId, round_number as roundNumber, status, fixture_ids as fixtureIds, created_at as createdAt FROM rounds`).all<Round>().then(r => r.results),
-      c.env.DB.prepare(`SELECT id, game_id as gameId, round_id as roundId, player_name as playerName, team_id as teamId, team_name as teamName, result, auto_assigned as autoAssigned, created_at as createdAt FROM picks`).all<Record<string, unknown>>().then(r => r.results),
+      c.env.DB.prepare(`SELECT id, game_id as gameId, round_id as roundId, player_name as playerName, team_id as teamId, team_name as teamName, result, auto_assigned as autoAssigned, fixture_id as fixtureId, created_at as createdAt FROM picks`).all<Record<string, unknown>>().then(r => r.results),
     ]) as [Record<string, unknown>[], Record<string, unknown>[], Round[], Record<string, unknown>[]]
   } else {
     // Manager: union of managed games + games they're a participant in
@@ -514,7 +515,7 @@ data.get('/sync', async (c) => {
         c.env.DB.prepare(`${GAME_SELECT} WHERE g.id IN (${ph}) ORDER BY g.created_at DESC`).bind(...ids).all<Record<string, unknown>>().then(r => r.results),
         c.env.DB.prepare(`SELECT id, game_id as gameId, player_name as playerName, is_active as isActive, eliminated_in_round as eliminatedInRound, created_at as createdAt FROM participants WHERE game_id IN (${ph})`).bind(...ids).all<Record<string, unknown>>().then(r => r.results),
         c.env.DB.prepare(`SELECT id, game_id as gameId, round_number as roundNumber, status, fixture_ids as fixtureIds, created_at as createdAt FROM rounds WHERE game_id IN (${ph})`).bind(...ids).all<Round>().then(r => r.results),
-        c.env.DB.prepare(`SELECT id, game_id as gameId, round_id as roundId, player_name as playerName, team_id as teamId, team_name as teamName, result, auto_assigned as autoAssigned, created_at as createdAt FROM picks WHERE game_id IN (${ph})`).bind(...ids).all<Record<string, unknown>>().then(r => r.results),
+        c.env.DB.prepare(`SELECT id, game_id as gameId, round_id as roundId, player_name as playerName, team_id as teamId, team_name as teamName, result, auto_assigned as autoAssigned, fixture_id as fixtureId, created_at as createdAt FROM picks WHERE game_id IN (${ph})`).bind(...ids).all<Record<string, unknown>>().then(r => r.results),
       ]) as [Record<string, unknown>[], Record<string, unknown>[], Round[], Record<string, unknown>[]]
     }
   }

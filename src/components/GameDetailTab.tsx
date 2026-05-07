@@ -7,20 +7,6 @@ import * as logic from '../gameLogic';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 
-function fixtureLabel(team: Team, fixtures: Fixture[]): string {
-  const matches = fixtures.filter(f => f.homeTeamName === team.name || f.awayTeamName === team.name);
-  if (matches.length === 0) return team.name;
-  const parts = matches.map(f => {
-    const isHome = f.homeTeamName === team.name;
-    const opponent = isHome ? f.awayTeamName : f.homeTeamName;
-    const venue = isHome ? 'Home' : 'Away';
-    const d = new Date(f.utcDate);
-    const dateStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-    const timeStr = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    return `${venue} vs ${opponent}, ${dateStr} ${timeStr}`;
-  });
-  return `${team.name} (${parts.join(' / ')})`;
-}
 
 type FixtureOutcome = 'home' | 'draw' | 'away' | 'postponed';
 
@@ -41,14 +27,8 @@ function fixtureResultHint(f: Fixture): string {
   return 'Awaiting result'
 }
 
-function activeOutcome(fixture: Fixture, pendingResults: Record<string, PickResult>): FixtureOutcome | null {
-  const hr = pendingResults[fixture.homeTeamName];
-  if (!hr) return null;
-  if (hr === 'win')       return 'home';
-  if (hr === 'loss')      return 'away';
-  if (hr === 'draw')      return 'draw';
-  if (hr === 'postponed') return 'postponed';
-  return null;
+function activeOutcome(fixtureId: number, pendingFixtureOutcomes: Record<number, FixtureOutcome>): FixtureOutcome | null {
+  return pendingFixtureOutcomes[fixtureId] ?? null;
 }
 
 interface Props {
@@ -66,10 +46,11 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
   const [error, setError] = useState('');
 
   // Picks assignment state: playerName -> teamId
-  const [pendingPicks, setPendingPicks] = useState<Record<string, number>>({});
+  const [pendingPicks, setPendingPicks] = useState<Record<string, { teamId: number; fixtureId?: number }>>({});
 
-  // Results entry state: teamName -> result
-  const [pendingResults, setPendingResults] = useState<Record<string, PickResult>>({});
+  // Results entry state: fixture outcomes (keyed by fixtureId) + unpaired team results
+  const [pendingFixtureOutcomes, setPendingFixtureOutcomes] = useState<Record<number, FixtureOutcome>>({});
+  const [pendingTeamResults, setPendingTeamResults] = useState<Record<string, PickResult>>({});
 
   // Add participant
   const [newParticipant, setNewParticipant] = useState('');
@@ -118,16 +99,17 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
         r => r.roundNumber === detail.game.currentRound && r.status === 'open'
       );
       if (open) {
-        const initial: Record<string, number> = {};
+        const initial: Record<string, { teamId: number; fixtureId?: number }> = {};
         for (const pick of detail.picks) {
-          if (pick.roundId === open.id && pick.teamId) initial[pick.playerName] = pick.teamId;
+          if (pick.roundId === open.id && pick.teamId) {
+            initial[pick.playerName] = { teamId: pick.teamId, fixtureId: pick.fixtureId };
+          }
         }
         setPendingPicks(initial);
 
-        // Load fixtures for this round if already set
-        if (open.fixtureIds?.length) {
-          setRoundFixtures(fixtures.filter(f => open.fixtureIds!.includes(f.id)));
-        }
+        // Load fixtures for this round if already set; always reset selection
+        setRoundFixtures(open.fixtureIds?.length ? fixtures.filter(f => open.fixtureIds!.includes(f.id)) : []);
+        setSelectedFixtureIds([]);
       }
     } catch (e) {
       setError(String(e));
@@ -164,6 +146,9 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
       picksByTeam.set(pick.teamName, arr);
     }
   }
+  const fixtureTeamNames = new Set(roundFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
+  const fixturesWithPicks = roundFixtures.filter(f => picksByTeam.has(f.homeTeamName) || picksByTeam.has(f.awayTeamName));
+  const unpairedTeams = [...picksByTeam.keys()].filter(t => !fixtureTeamNames.has(t));
 
   // ── Set fixtures ─────────────────────────────────────────────────────────
 
@@ -174,6 +159,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
       const updated = await db.setRoundFixtures(openRound.id, selectedFixtureIds);
       setRounds(prev => prev.map(r => r.id === updated.id ? updated : r));
       setRoundFixtures(allFixtures.filter(f => selectedFixtureIds.includes(f.id)));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
       setError(String(e));
     } finally {
@@ -189,9 +175,9 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
     setError('');
     try {
       // Save manually set picks
-      for (const [playerName, teamId] of Object.entries(pendingPicks)) {
-        if (!teamId) continue;
-        const team = teams.find(t => t.id === teamId);
+      for (const [playerName, pickData] of Object.entries(pendingPicks)) {
+        if (!pickData?.teamId) continue;
+        const team = teams.find(t => t.id === pickData.teamId);
         if (!team) continue;
         const existing = currentRoundPicks.find(p => p.playerName === playerName);
         const saved = await db.upsertPick({
@@ -201,6 +187,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
           playerName,
           teamId: team.id,
           teamName: team.name,
+          fixtureId: pickData.fixtureId,
           autoAssigned: false,
         });
         setPicks(prev => [...prev.filter(p => p.id !== saved.id), saved]);
@@ -243,10 +230,13 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
     try {
       for (const { playerName, team } of autoAssignments) {
         const existing = picks.find(p => p.roundId === openRound.id && p.playerName === playerName);
+        const teamFix = roundFixtures.filter(f => f.homeTeamName === team.name || f.awayTeamName === team.name);
         const saved = await db.upsertPick({
           id: existing?.id,
           gameId, roundId: openRound.id, playerName,
-          teamId: team.id, teamName: team.name, autoAssigned: true,
+          teamId: team.id, teamName: team.name,
+          fixtureId: teamFix.length === 1 ? teamFix[0].id : undefined,
+          autoAssigned: true,
         });
         setPicks(prev => [...prev.filter(p => p.id !== saved.id), saved]);
       }
@@ -263,21 +253,42 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
   async function handleCloseRound() {
     if (!openRound || !game) return;
 
-    // Validate all teams have a result
-    const teamNames = [...picksByTeam.keys()];
-    const missing = teamNames.filter(t => !pendingResults[t]);
-    if (missing.length > 0) {
-      setError(`Set a result for: ${missing.join(', ')}`);
+    // Validate all fixtures (with picks) and unpaired teams have a result
+    const missingFix = fixturesWithPicks.filter(f => pendingFixtureOutcomes[f.id] === undefined);
+    const missingTeam = unpairedTeams.filter(t => pendingTeamResults[t] === undefined);
+    if (missingFix.length > 0 || missingTeam.length > 0) {
+      const labels = [
+        ...missingFix.map(f => `${f.homeTeamName} vs ${f.awayTeamName}`),
+        ...missingTeam,
+      ];
+      setError(`Set a result for: ${labels.join(', ')}`);
       return;
     }
 
     setBusy(true);
     setError('');
     try {
-      // Save results to picks
-      for (const [teamName, result] of Object.entries(pendingResults)) {
-        const teamPicks = picksByTeam.get(teamName) ?? [];
-        for (const pick of teamPicks) {
+      // Save results — fixture-linked picks matched by fixtureId, unpaired by team name
+      for (const [fixtureIdStr, outcome] of Object.entries(pendingFixtureOutcomes)) {
+        const fId = Number(fixtureIdStr);
+        const fixture = roundFixtures.find(f => f.id === fId);
+        if (!fixture) continue;
+        const { home: homeResult, away: awayResult } = outcomeToResults(outcome);
+        for (const pick of currentRoundPicks) {
+          if (pick.fixtureId === fId) {
+            await db.upsertPick({ ...pick, result: pick.teamName === fixture.homeTeamName ? homeResult : awayResult });
+          } else if (pick.fixtureId == null) {
+            // Legacy/auto-assigned pick — apply only if this team plays exactly once in the round
+            const teamFixCount = roundFixtures.filter(f2 => f2.homeTeamName === pick.teamName || f2.awayTeamName === pick.teamName).length;
+            if (teamFixCount === 1) {
+              if (pick.teamName === fixture.homeTeamName) await db.upsertPick({ ...pick, result: homeResult });
+              else if (pick.teamName === fixture.awayTeamName) await db.upsertPick({ ...pick, result: awayResult });
+            }
+          }
+        }
+      }
+      for (const [teamName, result] of Object.entries(pendingTeamResults)) {
+        for (const pick of currentRoundPicks.filter(p => p.teamName === teamName)) {
           await db.upsertPick({ ...pick, result });
         }
       }
@@ -318,7 +329,8 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
 
       await load();
       setGame(updatedGame);
-      setPendingResults({});
+      setPendingFixtureOutcomes({});
+      setPendingTeamResults({});
     } catch (e) {
       setError(String(e));
     } finally {
@@ -357,7 +369,8 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
       }
       setGame(updatedGame);
       setMassEliminationState(null);
-      setPendingResults({});
+      setPendingFixtureOutcomes({});
+      setPendingTeamResults({});
       await load();
     } catch (e) {
       setError(String(e));
@@ -571,13 +584,40 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                           <td style={{ fontWeight: 600 }}>{p.playerName}</td>
                           <td>
                             <select
-                              value={pendingPicks[p.playerName] ?? ''}
-                              onChange={e => setPendingPicks(prev => ({ ...prev, [p.playerName]: Number(e.target.value) }))}
+                              value={
+                                pendingPicks[p.playerName]
+                                  ? `${pendingPicks[p.playerName].teamId}:${pendingPicks[p.playerName].fixtureId ?? ''}`
+                                  : ''
+                              }
+                              onChange={e => {
+                                const val = e.target.value;
+                                if (!val) { setPendingPicks(prev => { const n = { ...prev }; delete n[p.playerName]; return n; }); return; }
+                                const ci = val.indexOf(':');
+                                const teamId = Number(val.substring(0, ci));
+                                const fStr = val.substring(ci + 1);
+                                setPendingPicks(prev => ({ ...prev, [p.playerName]: { teamId, fixtureId: fStr ? Number(fStr) : undefined } }));
+                              }}
                             >
                               <option value="">Select team…</option>
-                              {filteredAvailable.map(t => (
-                                <option key={t.id} value={t.id}>{fixtureLabel(t, roundFixtures)}</option>
-                              ))}
+                              {(() => {
+                                const opts: { value: string; label: string }[] = [];
+                                for (const t of filteredAvailable) {
+                                  const tFix = roundFixtures.filter(f => f.homeTeamName === t.name || f.awayTeamName === t.name);
+                                  if (tFix.length === 0) {
+                                    opts.push({ value: `${t.id}:`, label: t.name });
+                                  } else {
+                                    for (const f of tFix) {
+                                      const isHome = f.homeTeamName === t.name;
+                                      const opp = isHome ? f.awayTeamName : f.homeTeamName;
+                                      const d = new Date(f.utcDate);
+                                      const ds = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+                                      const ts = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                                      opts.push({ value: `${t.id}:${f.id}`, label: `${t.name} (${isHome ? 'Home' : 'Away'} vs ${opp}, ${ds} ${ts})` });
+                                    }
+                                  }
+                                }
+                                return opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>);
+                              })()}
                             </select>
                           </td>
                         </tr>
@@ -635,7 +675,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                   <button
                     className="btn btn-success"
                     onClick={handleCloseRound}
-                    disabled={busy || [...picksByTeam.keys()].some(t => !pendingResults[t])}
+                    disabled={busy || fixturesWithPicks.some(f => pendingFixtureOutcomes[f.id] === undefined) || unpairedTeams.some(t => pendingTeamResults[t] === undefined)}
                   >
                     {busy ? <><span className="spinner" /> Working…</> : 'Close Round & Advance'}
                   </button>
@@ -643,18 +683,12 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
               </div>
 
               {roundFixtures.length > 0 ? (() => {
-                const fixtureTeamNames = new Set(roundFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
-                const fixturesWithPicks = roundFixtures.filter(
-                  f => picksByTeam.has(f.homeTeamName) || picksByTeam.has(f.awayTeamName)
-                );
-                const unpairedTeams = [...picksByTeam.keys()].filter(t => !fixtureTeamNames.has(t));
-
                 return (
                   <>
                     {fixturesWithPicks.map(f => {
                       const homePicks = picksByTeam.get(f.homeTeamName) ?? [];
                       const awayPicks = picksByTeam.get(f.awayTeamName) ?? [];
-                      const outcome = activeOutcome(f, pendingResults);
+                      const outcome = activeOutcome(f.id, pendingFixtureOutcomes);
                       const dateStr = new Date(f.utcDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
                       return (
                         <div key={f.id} style={{ padding: '14px 0', borderBottom: '1px solid var(--border)' }}>
@@ -682,10 +716,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                               <button
                                 key={key}
                                 className={`result-btn ${outcome === key ? css : ''}`}
-                                onClick={() => {
-                                  const { home, away } = outcomeToResults(key);
-                                  setPendingResults(prev => ({ ...prev, [f.homeTeamName]: home, [f.awayTeamName]: away }));
-                                }}
+                                onClick={() => setPendingFixtureOutcomes(prev => ({ ...prev, [f.id]: key }))}
                               >
                                 {label}
                               </button>
@@ -704,8 +735,8 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                           </div>
                           <div style={{ display: 'flex', gap: 6 }}>
                             {(['win', 'loss', 'draw', 'postponed'] as PickResult[]).map(r => (
-                              <button key={r} className={`result-btn ${pendingResults[teamName] === r ? `active-${r}` : ''}`}
-                                onClick={() => setPendingResults(prev => ({ ...prev, [teamName]: r }))}>{r}</button>
+                              <button key={r} className={`result-btn ${pendingTeamResults[teamName] === r ? `active-${r}` : ''}`}
+                                onClick={() => setPendingTeamResults(prev => ({ ...prev, [teamName]: r }))}>{r}</button>
                             ))}
                           </div>
                         </div>
@@ -723,8 +754,8 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       {(['win', 'loss', 'draw', 'postponed'] as PickResult[]).map(r => (
-                        <button key={r} className={`result-btn ${pendingResults[teamName] === r ? `active-${r}` : ''}`}
-                          onClick={() => setPendingResults(prev => ({ ...prev, [teamName]: r }))}>{r}</button>
+                        <button key={r} className={`result-btn ${pendingTeamResults[teamName] === r ? `active-${r}` : ''}`}
+                          onClick={() => setPendingTeamResults(prev => ({ ...prev, [teamName]: r }))}>{r}</button>
                       ))}
                     </div>
                   </div>
