@@ -103,7 +103,7 @@ data.post('/admin/import-teams', requireRole('admin'), async (c) => {
     c.env.DB.prepare(`
       INSERT INTO teams (group_id, name, external_id, crest_url)
       VALUES (?, ?, ?, ?)
-      ON CONFLICT(group_id, external_id) DO UPDATE SET
+      ON CONFLICT(group_id, external_id) WHERE external_id IS NOT NULL DO UPDATE SET
         name      = excluded.name,
         crest_url = excluded.crest_url
     `).bind(groupId, t.name, t.id, t.crest)
