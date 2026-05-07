@@ -14,6 +14,25 @@ import { api } from './api/client';
 
 type Tab = 'setup' | 'games' | 'game-detail' | 'reports' | 'tools';
 
+function useUpdateAvailable() {
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return
+    navigator.serviceWorker.ready.then(reg => {
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing
+        if (!newWorker) return
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            setUpdateAvailable(true)
+          }
+        })
+      })
+    })
+  }, [])
+  return updateAvailable
+}
+
 function SettingsPanel({ onClose }: { onClose: () => void }) {
   const { supported, permission, subscribed, busy, enable, disable } = usePushSubscription()
   const ref = useRef<HTMLDivElement>(null)
@@ -87,6 +106,7 @@ function MainApp() {
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const isOnline = useOnlineSync();
+  const updateAvailable = useUpdateAvailable();
 
   function openGame(id: number) {
     setSelectedGameId(id);
@@ -155,6 +175,11 @@ function MainApp() {
         )}
       </nav>
 
+      {updateAvailable && (
+        <div className="offline-banner" style={{ background: 'var(--accent)', color: '#000' }}>
+          New version available — close all app tabs and reopen to update
+        </div>
+      )}
       {!isOnline && (
         <div className="offline-banner">
           No connection — viewing saved data, changes disabled
