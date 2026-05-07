@@ -29,8 +29,6 @@ export interface Player {
 }
 
 export type GameStatus = 'active' | 'completed';
-export type WinnerMode = 'single' | 'multiple';
-export type RolloverMode = 'round' | 'game';
 export type PickResult = 'win' | 'loss' | 'draw' | 'postponed';
 export type RoundStatus = 'open' | 'closed';
 
@@ -42,9 +40,6 @@ export interface Game {
   status: GameStatus;
   winnerName?: string;
   postponeAsWin: boolean;
-  winnerMode: WinnerMode;
-  rolloverMode: RolloverMode;
-  maxWinners: number;
   participantCount: number;
   currentRound: number;
   createdAt: string;

@@ -21,9 +21,6 @@ export default function GamesListTab({ onSelectGame }: Props) {
   const [formGroupId, setFormGroupId] = useState<number | ''>('');
   const [formSelectedPlayers, setFormSelectedPlayers] = useState<Set<string>>(new Set());
   const [formPostponeAsWin, setFormPostponeAsWin] = useState(false);
-  const [formWinnerMode, setFormWinnerMode] = useState<'single' | 'multiple'>('single');
-  const [formRolloverMode, setFormRolloverMode] = useState<'round' | 'game'>('round');
-  const [formMaxWinners, setFormMaxWinners] = useState(3);
   const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
@@ -74,9 +71,6 @@ export default function GamesListTab({ onSelectGame }: Props) {
     setFormGroupId('');
     setFormSelectedPlayers(new Set());
     setFormPostponeAsWin(false);
-    setFormWinnerMode('single');
-    setFormRolloverMode('round');
-    setFormMaxWinners(3);
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -90,9 +84,6 @@ export default function GamesListTab({ onSelectGame }: Props) {
         groupId: Number(formGroupId),
         playerNames: [...formSelectedPlayers],
         postponeAsWin: formPostponeAsWin,
-        winnerMode: formWinnerMode,
-        rolloverMode: formRolloverMode,
-        maxWinners: formWinnerMode === 'multiple' ? formMaxWinners : 1,
       });
       setGames(prev => [game, ...prev]);
       resetForm();
@@ -220,58 +211,7 @@ export default function GamesListTab({ onSelectGame }: Props) {
               )}
             </div>
 
-            <div className="mt-16" style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-              <div>
-                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 8 }}>
-                  Winner Mode
-                </label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {(['single', 'multiple'] as const).map(m => (
-                    <button
-                      key={m}
-                      type="button"
-                      className={`btn ${formWinnerMode === m ? 'btn-primary' : 'btn-ghost'}`}
-                      onClick={() => setFormWinnerMode(m)}
-                    >
-                      {m === 'single' ? 'Single Winner' : 'Multiple Winners'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 8 }}>
-                  Rollover Mode
-                </label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {(['round', 'game'] as const).map(m => (
-                    <button
-                      key={m}
-                      type="button"
-                      className={`btn ${formRolloverMode === m ? 'btn-primary' : 'btn-ghost'}`}
-                      onClick={() => setFormRolloverMode(m)}
-                    >
-                      {m === 'round' ? 'Rollover Round' : 'Rollover Game'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-16" style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              {formWinnerMode === 'multiple' && (
-                <div className="form-group" style={{ maxWidth: 180 }}>
-                  <label>Max Winners</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={formSelectedPlayers.size || 99}
-                    value={formMaxWinners}
-                    onChange={e => setFormMaxWinners(Number(e.target.value))}
-                  />
-                </div>
-              )}
-
+            <div className="mt-16">
               <label className="checkbox-row">
                 <input
                   type="checkbox"

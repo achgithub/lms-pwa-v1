@@ -16,16 +16,15 @@ export default function InviteQR() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const targetRole = isAdmin ? 'Manager' : isManager ? 'Player' : null;
-  if (!targetRole) return null;
+  if (!isAdmin && !isManager) return null;
 
-  async function generate() {
+  async function generate(role: 'manager' | 'player') {
     setBusy(true);
     setError('');
     setInvite(null);
     setQrSvg('');
     try {
-      const result = await api.post<InviteResult>('/auth/invite', {});
+      const result = await api.post<InviteResult>('/auth/invite', { role });
       setInvite(result);
       const QRCode = await import('qrcode');
       const svg = await QRCode.toString(result.inviteUrl, { type: 'svg', width: 220, margin: 2 });
@@ -42,14 +41,23 @@ export default function InviteQR() {
     setQrSvg('');
   }
 
+  const roleLabel = invite?.role === 'player' ? 'Player' : 'Manager';
+
   return (
     <div>
       {!invite ? (
         <>
           {error && <div className="alert alert-error" style={{ marginBottom: 12 }}>{error}</div>}
-          <button className="btn btn-primary" onClick={generate} disabled={busy}>
-            {busy ? <><span className="spinner" /> Generating…</> : `Invite ${targetRole}`}
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {isAdmin && (
+              <button className="btn btn-primary" onClick={() => generate('manager')} disabled={busy}>
+                {busy ? <><span className="spinner" /> Generating…</> : 'Invite Manager'}
+              </button>
+            )}
+            <button className="btn btn-primary" onClick={() => generate('player')} disabled={busy}>
+              {busy ? <><span className="spinner" /> Generating…</> : 'Invite Player'}
+            </button>
+          </div>
         </>
       ) : (
         <div style={{ textAlign: 'center' }}>
@@ -58,7 +66,7 @@ export default function InviteQR() {
             dangerouslySetInnerHTML={{ __html: qrSvg }}
           />
           <p style={{ marginTop: 8, fontSize: 13, color: 'var(--text-muted)' }}>
-            {targetRole} invite · expires {new Date(invite.expiresAt).toLocaleTimeString()}
+            {roleLabel} invite · expires {new Date(invite.expiresAt).toLocaleTimeString()}
           </p>
           <p style={{ fontSize: 11, color: 'var(--text-muted)', wordBreak: 'break-all', marginTop: 4 }}>
             {invite.inviteUrl}

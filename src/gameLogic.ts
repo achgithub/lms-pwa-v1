@@ -1,4 +1,4 @@
-import type { Game, Participant, Pick, Round, Standing, Team } from './types';
+import type { Participant, Pick, Round, Standing, Team } from './types';
 
 // ── Pick validation ──────────────────────────────────────────────────────────
 
@@ -66,45 +66,30 @@ export function computeEliminations(
 export type AdvanceDecision =
   | { action: 'next-round'; nextRoundNumber: number }
   | { action: 'game-over'; winnerNames: string[] }
-  | { action: 'rollover' };
+  | { action: 'manager-decision'; candidates: string[] };
 
 /**
  * Determines what happens after a round closes.
- * Called with the participants *after* elimination has been applied.
+ * survivingParticipants: participants after applying this round's eliminations.
+ * activeBeforeRound: participants who were active before this round (candidates if all eliminated).
  */
 export function computeAdvanceDecision(
-  game: Game,
+  currentRound: number,
   survivingParticipants: Participant[],
-  allParticipants: Participant[]
+  activeBeforeRound: Participant[]
 ): AdvanceDecision {
   const activeCount = survivingParticipants.filter(p => p.isActive).length;
 
-  if (game.winnerMode === 'multiple') {
-    // Enough survivors to declare winners
-    if (activeCount > 0 && activeCount <= game.maxWinners) {
-      return { action: 'game-over', winnerNames: survivingParticipants.filter(p => p.isActive).map(p => p.playerName) };
-    }
-    // All eliminated — use highest-surviving set or rollover
-    if (activeCount === 0) {
-      // Check if we can declare winners from last standing before elimination
-      const prevActive = allParticipants.filter(p => p.isActive);
-      if (prevActive.length <= game.maxWinners) {
-        return { action: 'game-over', winnerNames: prevActive.map(p => p.playerName) };
-      }
-      return { action: 'rollover' };
-    }
-  } else {
-    // single winner mode
-    if (activeCount === 1) {
-      const winner = survivingParticipants.find(p => p.isActive)!;
-      return { action: 'game-over', winnerNames: [winner.playerName] };
-    }
-    if (activeCount === 0) {
-      return { action: 'rollover' };
-    }
+  if (activeCount === 1) {
+    const winner = survivingParticipants.find(p => p.isActive)!;
+    return { action: 'game-over', winnerNames: [winner.playerName] };
   }
 
-  return { action: 'next-round', nextRoundNumber: game.currentRound + 1 };
+  if (activeCount === 0) {
+    return { action: 'manager-decision', candidates: activeBeforeRound.map(p => p.playerName) };
+  }
+
+  return { action: 'next-round', nextRoundNumber: currentRound + 1 };
 }
 
 // ── Auto-assign ───────────────────────────────────────────────────────────────

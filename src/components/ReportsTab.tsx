@@ -97,8 +97,6 @@ export default function ReportsTab() {
               <Stat label="Status" value={<span className={`badge badge-${selectedGame.status}`}>{selectedGame.status}</span>} />
               <Stat label="Players" value={selectedGame.participantCount} />
               <Stat label="Current Round" value={selectedGame.currentRound} />
-              <Stat label="Winner Mode" value={selectedGame.winnerMode} />
-              <Stat label="Rollover" value={selectedGame.rolloverMode} />
               <Stat label="Postpone = Win" value={selectedGame.postponeAsWin ? 'Yes' : 'No'} />
               {selectedGame.winnerName && (
                 <Stat label="Winner" value={<strong style={{ color: 'var(--warning)' }}>{selectedGame.winnerName}</strong>} />

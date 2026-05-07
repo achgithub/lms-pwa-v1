@@ -84,6 +84,15 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
   const [savingFixtures, setSavingFixtures] = useState(false);
   const [standings, setStandings] = useState<Standing[]>([]);
   const [pendingAutoAssignments, setPendingAutoAssignments] = useState<AutoAssignment[] | null>(null);
+  const [massEliminationState, setMassEliminationState] = useState<{
+    candidates: string[];
+    eliminatedIds: number[];
+    openRoundId: number;
+    currentRound: number;
+    singleWinnerChoice: string;
+  } | null>(null);
+  const [showDeclareResult, setShowDeclareResult] = useState(false);
+  const [declareResultWinners, setDeclareResultWinners] = useState<Set<string>>(new Set());
   const { user, actingAsPlayer } = useAuth();
 
   const load = useCallback(async () => {
@@ -285,25 +294,20 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
         eliminatedIds.includes(p.id) ? { ...p, isActive: false, eliminatedInRound: game.currentRound } : p
       );
 
-      const decision = logic.computeAdvanceDecision(game, survivingParticipants, participants);
+      const decision = logic.computeAdvanceDecision(game.currentRound, survivingParticipants, activeParticipants);
 
-      let updatedGame: Game;
-
-      if (decision.action === 'rollover') {
-        updatedGame = await db.rolloverGame({
-          gameId,
-          currentRound: game.currentRound,
+      if (decision.action === 'manager-decision') {
+        setMassEliminationState({
+          candidates: decision.candidates,
+          eliminatedIds,
           openRoundId: openRound.id,
-          rolloverMode: game.rolloverMode,
+          currentRound: game.currentRound,
+          singleWinnerChoice: decision.candidates[0] ?? '',
         });
-        // Reload everything after rollover
-        await load();
-        setGame(updatedGame);
-        setPendingResults({});
         return;
       }
 
-      updatedGame = await db.advanceRound({
+      const updatedGame = await db.advanceRound({
         gameId,
         currentRound: game.currentRound,
         openRoundId: openRound.id,
@@ -312,10 +316,68 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
         winnerNames: decision.action === 'game-over' ? decision.winnerNames : undefined,
       });
 
-      // Reload fresh state
       await load();
       setGame(updatedGame);
       setPendingResults({});
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // ── Mass elimination decision (all players out same round) ──────────────
+
+  async function handleMassEliminationDecision(type: 'winner' | 'split' | 'rollover') {
+    if (!massEliminationState) return;
+    setBusy(true);
+    setError('');
+    try {
+      let updatedGame: Game;
+      if (type === 'rollover') {
+        updatedGame = await db.advanceRound({
+          gameId,
+          currentRound: massEliminationState.currentRound,
+          openRoundId: massEliminationState.openRoundId,
+          eliminatedParticipantIds: [],
+          nextRoundNumber: massEliminationState.currentRound + 1,
+        });
+      } else {
+        const winnerNames = type === 'split'
+          ? massEliminationState.candidates
+          : [massEliminationState.singleWinnerChoice];
+        updatedGame = await db.advanceRound({
+          gameId,
+          currentRound: massEliminationState.currentRound,
+          openRoundId: massEliminationState.openRoundId,
+          eliminatedParticipantIds: massEliminationState.eliminatedIds,
+          nextRoundNumber: null,
+          winnerNames,
+        });
+      }
+      setGame(updatedGame);
+      setMassEliminationState(null);
+      setPendingResults({});
+      await load();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // ── Declare result early (scenario 2: manager ends game) ────────────────
+
+  async function handleDeclareResult() {
+    if (declareResultWinners.size === 0) return;
+    setBusy(true);
+    setError('');
+    try {
+      const updatedGame = await db.declareResult(gameId, [...declareResultWinners]);
+      setGame(updatedGame);
+      setShowDeclareResult(false);
+      setDeclareResultWinners(new Set());
+      await load();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -562,7 +624,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
           )}
 
           {/* ── Results Phase ── */}
-          {resultsPhase && !pendingAutoAssignments && (
+          {resultsPhase && !pendingAutoAssignments && !massEliminationState && (
             <div className="card">
               <div className="section-header">
                 <h3 className="card-title" style={{ marginBottom: 0 }}>
@@ -670,6 +732,73 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
               )}
             </div>
           )}
+          {/* ── Mass Elimination Decision ── */}
+          {massEliminationState && (
+            <div className="card">
+              <h3 className="card-title">All Players Eliminated — Round {massEliminationState.currentRound}</h3>
+              <p className="text-muted" style={{ marginBottom: 16 }}>
+                All {massEliminationState.candidates.length} remaining players were eliminated in the same round. Choose how to proceed:
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Declare a single winner</div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <select
+                      value={massEliminationState.singleWinnerChoice}
+                      onChange={e => setMassEliminationState(prev => prev ? { ...prev, singleWinnerChoice: e.target.value } : null)}
+                      style={{ flex: 1, minWidth: 140 }}
+                    >
+                      {massEliminationState.candidates.map(name => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() => handleMassEliminationDecision('winner')}
+                      disabled={busy || !massEliminationState.singleWinnerChoice}
+                    >
+                      {busy ? <span className="spinner" /> : 'Declare Winner'}
+                    </button>
+                  </div>
+                </div>
+                <div style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Split the pot</div>
+                  <div className="text-muted" style={{ fontSize: 13, marginBottom: 8 }}>
+                    All eliminated players share: {massEliminationState.candidates.join(', ')}
+                  </div>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleMassEliminationDecision('split')}
+                    disabled={busy}
+                  >
+                    {busy ? <span className="spinner" /> : 'Declare Split'}
+                  </button>
+                </div>
+                <div style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Rollover to next round</div>
+                  <div className="text-muted" style={{ fontSize: 13, marginBottom: 8 }}>
+                    Close this round with no eliminations. All players carry forward to round {massEliminationState.currentRound + 1}.
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => handleMassEliminationDecision('rollover')}
+                      disabled={busy}
+                    >
+                      {busy ? <span className="spinner" /> : 'Rollover'}
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setMassEliminationState(null)}
+                      disabled={busy}
+                    >
+                      Back
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       ) : (
         <div className="card">
@@ -712,6 +841,63 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
           <p className="text-muted" style={{ fontSize: 12, marginTop: 8 }}>
             Sends a push notification to players who have enabled it. "Eliminated" targets the most recently knocked-out players.
           </p>
+        </div>
+      )}
+
+      {/* ── Declare Result (end game early) ── */}
+      {!actingAsPlayer && game.status === 'active' && activeParticipants.length >= 2 && (
+        <div className="card mt-16">
+          {!showDeclareResult ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+              <div>
+                <div style={{ fontWeight: 600 }}>End Game Early</div>
+                <div className="text-muted" style={{ fontSize: 13 }}>Declare winner(s) without playing further rounds</div>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowDeclareResult(true)}>
+                Declare Result
+              </button>
+            </div>
+          ) : (
+            <>
+              <h3 className="card-title">Declare Result</h3>
+              <p className="text-muted" style={{ marginBottom: 12 }}>
+                Select the winner(s). This ends the game immediately.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                {activeParticipants.map(p => (
+                  <label key={p.id} className="checkbox-row" style={{ cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={declareResultWinners.has(p.playerName)}
+                      onChange={() => setDeclareResultWinners(prev => {
+                        const n = new Set(prev);
+                        n.has(p.playerName) ? n.delete(p.playerName) : n.add(p.playerName);
+                        return n;
+                      })}
+                      style={{ marginRight: 8 }}
+                    />
+                    {p.playerName}
+                  </label>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleDeclareResult}
+                  disabled={busy || declareResultWinners.size === 0}
+                >
+                  {busy ? <><span className="spinner" /> Working…</> : `Declare ${declareResultWinners.size > 1 ? 'Winners' : 'Winner'}`}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => { setShowDeclareResult(false); setDeclareResultWinners(new Set()); }}
+                  disabled={busy}
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 

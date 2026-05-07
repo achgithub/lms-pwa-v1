@@ -288,16 +288,14 @@ data.get('/games', async (c) => {
 
 data.post('/games', async (c) => {
   const body = await c.req.json<{
-    name: string; groupId: number; playerNames: string[]
-    postponeAsWin: boolean; winnerMode: string; rolloverMode: string; maxWinners: number
+    name: string; groupId: number; playerNames: string[]; postponeAsWin: boolean
   }>()
 
   const gameRow = await c.env.DB.prepare(`
     INSERT INTO games (name, group_id, postpone_as_win, winner_mode, rollover_mode, max_winners, participant_count, manager_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+    VALUES (?, ?, ?, 'single', 'round', 1, ?, ?) RETURNING id
   `).bind(
     body.name, body.groupId, body.postponeAsWin ? 1 : 0,
-    body.winnerMode, body.rolloverMode, body.maxWinners,
     body.playerNames.length, c.get('userId')
   ).first<{ id: number }>()
 
@@ -530,6 +528,59 @@ data.get('/sync', async (c) => {
     rounds: roundRows.map(mapRound),
     picks: pickRows.map(mapPick),
   })
+})
+
+// ── Declare result (manager ends game early with chosen winner(s)) ────────────
+
+data.post('/games/:id/declare-result', requireRole('manager'), async (c) => {
+  const gameId = Number(c.req.param('id'))
+  const { winnerNames } = await c.req.json<{ winnerNames: string[] }>()
+  if (!winnerNames?.length) return c.json({ error: 'winnerNames required' }, 400)
+
+  const openRound = await c.env.DB.prepare(
+    `SELECT id FROM rounds WHERE game_id = ? AND status = 'open' ORDER BY round_number DESC LIMIT 1`
+  ).bind(gameId).first<{ id: number }>()
+
+  const stmts = [
+    c.env.DB.prepare(`UPDATE games SET status = 'completed', winner_name = ? WHERE id = ?`)
+      .bind(winnerNames.join(', '), gameId),
+    ...(openRound
+      ? [c.env.DB.prepare(`UPDATE rounds SET status = 'closed' WHERE id = ?`).bind(openRound.id)]
+      : []),
+  ]
+  await c.env.DB.batch(stmts)
+  const game = await c.env.DB.prepare(`${GAME_SELECT} WHERE g.id = ?`).bind(gameId).first<Record<string, unknown>>()
+  return c.json(mapGame(game!))
+})
+
+// ── Void round (delete picks for open round, leave round open) ────────────────
+
+data.post('/games/:id/void-round', requireRole('manager'), async (c) => {
+  const gameId = Number(c.req.param('id'))
+  const { openRoundId } = await c.req.json<{ openRoundId: number }>()
+  await c.env.DB.prepare('DELETE FROM picks WHERE game_id = ? AND round_id = ?').bind(gameId, openRoundId).run()
+  return new Response(null, { status: 204 })
+})
+
+// ── User management (admin only) ─────────────────────────────────────────────
+
+data.get('/admin/users', requireRole('admin'), async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, name, role, is_active as isActive, created_at as createdAt
+     FROM users WHERE role != 'admin' ORDER BY role, name`
+  ).all<{ id: number; name: string; role: string; isActive: number; createdAt: string }>()
+  return c.json(results.map(u => ({ ...u, isActive: Boolean(u.isActive) })))
+})
+
+data.patch('/admin/users/:id/role', requireRole('admin'), async (c) => {
+  const id = Number(c.req.param('id'))
+  const { role } = await c.req.json<{ role: string }>()
+  if (role !== 'player') return c.json({ error: 'Only demotion to player is supported' }, 400)
+  const user = await c.env.DB.prepare(`SELECT role FROM users WHERE id = ?`).bind(id).first<{ role: string }>()
+  if (!user) return c.json({ error: 'User not found' }, 404)
+  if (user.role === 'admin') return c.json({ error: 'Cannot change admin role' }, 403)
+  await c.env.DB.prepare(`UPDATE users SET role = ? WHERE id = ?`).bind(role, id).run()
+  return c.json({ id, role })
 })
 
 export default data

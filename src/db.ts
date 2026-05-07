@@ -196,9 +196,6 @@ export interface CreateGameParams {
   groupId: number;
   playerNames: string[];
   postponeAsWin: boolean;
-  winnerMode: 'single' | 'multiple';
-  rolloverMode: 'round' | 'game';
-  maxWinners: number;
 }
 
 export async function createGame(params: CreateGameParams): Promise<Game> {
@@ -292,6 +289,18 @@ export interface RolloverParams {
 export async function rolloverGame(params: RolloverParams): Promise<Game> {
   requireOnline();
   const game = await api.post<Game>(`/games/${params.gameId}/rollover`, params);
+  await (await idb()).put('games', game);
+  return game;
+}
+
+export async function voidRound(gameId: number, openRoundId: number): Promise<void> {
+  requireOnline();
+  await api.post(`/games/${gameId}/void-round`, { openRoundId });
+}
+
+export async function declareResult(gameId: number, winnerNames: string[]): Promise<Game> {
+  requireOnline();
+  const game = await api.post<Game>(`/games/${gameId}/declare-result`, { winnerNames });
   await (await idb()).put('games', game);
   return game;
 }

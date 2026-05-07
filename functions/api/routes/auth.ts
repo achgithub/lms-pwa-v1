@@ -54,13 +54,21 @@ auth.post('/login', async (c) => {
   return c.json({ token, user: { id: user.id, name: user.name, role: user.role } })
 })
 
-// POST /auth/invite — generate invite QR (admin → manager, manager → player)
+// POST /auth/invite — generate invite QR (admin → manager|player, manager → player)
 auth.post('/invite', authMiddleware, async (c) => {
   const userRole = c.get('userRole')
   const userId = c.get('userId')
 
-  const targetRole = userRole === 'admin' ? 'manager' : userRole === 'manager' ? 'player' : null
-  if (!targetRole) return c.json({ error: 'Forbidden' }, 403)
+  if (userRole !== 'admin' && userRole !== 'manager') return c.json({ error: 'Forbidden' }, 403)
+
+  const body = await c.req.json<{ role?: string }>().catch(() => ({}))
+  let targetRole: string
+  if (userRole === 'manager') {
+    targetRole = 'player'
+  } else {
+    // admin can invite manager or player; default to manager
+    targetRole = body.role === 'player' ? 'player' : 'manager'
+  }
 
   const token = randomHex(20)
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()

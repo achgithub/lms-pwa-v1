@@ -1,8 +1,17 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { Group, Player, Team } from '../types';
 import * as db from '../db';
+import { api } from '../api/client';
 import InviteQR from './auth/InviteQR';
 import { useAuth } from '../contexts/AuthContext';
+
+interface AppUser {
+  id: number;
+  name: string;
+  role: string;
+  isActive: boolean;
+  createdAt: string;
+}
 
 export default function SetupTab() {
   const { isAdmin } = useAuth();
@@ -10,6 +19,7 @@ export default function SetupTab() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [teamsByGroup, setTeamsByGroup] = useState<Record<number, Team[]>>({});
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
+  const [appUsers, setAppUsers] = useState<AppUser[]>([]);
   const [error, setError] = useState('');
 
   // New entry state
@@ -19,9 +29,15 @@ export default function SetupTab() {
 
   const load = useCallback(async () => {
     try {
-      const [g, p] = await Promise.all([db.getGroups(), db.getPlayers()]);
+      const fetches: [Promise<Group[]>, Promise<Player[]>, Promise<AppUser[]>] = [
+        db.getGroups(),
+        db.getPlayers(),
+        isAdmin ? api.get<AppUser[]>('/admin/users') : Promise.resolve([]),
+      ];
+      const [g, p, u] = await Promise.all(fetches);
       setGroups(g);
       setPlayers(p);
+      setAppUsers(u);
       // Load teams for already-expanded groups
       const teamMap: Record<number, Team[]> = {};
       await Promise.all(
@@ -97,6 +113,18 @@ export default function SetupTab() {
     });
   }
 
+  // ── Users ──────────────────────────────────────────────────────────────
+
+  async function handleDemote(id: number, name: string) {
+    if (!confirm(`Demote ${name} from Manager to Player?`)) return;
+    try {
+      await api.patch(`/admin/users/${id}/role`, { role: 'player' });
+      setAppUsers(prev => prev.map(u => u.id === id ? { ...u, role: 'player' } : u));
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   // ── Teams ──────────────────────────────────────────────────────────────
 
   async function handleAddTeam(e: React.FormEvent, groupId: number) {
@@ -132,6 +160,43 @@ export default function SetupTab() {
         <h2 className="card-title">Invite</h2>
         <InviteQR />
       </div>
+
+      {isAdmin && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h2 className="card-title">Users</h2>
+          {appUsers.length === 0 ? (
+            <p className="empty-state">No users yet.</p>
+          ) : (
+            <>
+              {['manager', 'player'].map(role => {
+                const group = appUsers.filter(u => u.role === role);
+                if (group.length === 0) return null;
+                return (
+                  <div key={role} style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+                      {role === 'manager' ? 'Managers' : 'Players'}
+                    </div>
+                    {group.map(u => (
+                      <div key={u.id} className="list-item">
+                        <span>{u.name}</span>
+                        {u.role === 'manager' && (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => handleDemote(u.id, u.name)}
+                            title="Demote to Player"
+                          >
+                            Demote to Player
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+      )}
 
       <div className="two-col">
         {/* ── Player Pool ── */}

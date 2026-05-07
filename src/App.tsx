@@ -127,7 +127,7 @@ function MainApp() {
   const allTabs: { id: Tab; label: string; managerOnly?: boolean }[] = [
     { id: 'setup',   label: 'Setup',   managerOnly: true },
     { id: 'games',   label: 'Games' },
-    { id: 'reports', label: 'Reports' },
+    { id: 'reports', label: 'Reports', managerOnly: true },
     { id: 'tools',   label: 'Tools',   managerOnly: true },
   ];
   const tabs = allTabs.filter(t => !t.managerOnly || (isManager && viewMode !== 'player'));
@@ -160,20 +160,22 @@ function MainApp() {
         </div>
       </header>
 
-      <nav className="app-nav">
-        {tabs.map(t => (
-          <button
-            key={t.id}
-            className={`nav-tab ${activeTab === t.id ? 'active' : ''}`}
-            onClick={() => { setActiveTab(t.id); setSelectedGameId(null); }}
-          >
-            {t.label}
-          </button>
-        ))}
-        {activeTab === 'game-detail' && (
-          <button className="nav-tab active">Game Detail</button>
-        )}
-      </nav>
+      {!isPlayer && (
+        <nav className="app-nav">
+          {tabs.map(t => (
+            <button
+              key={t.id}
+              className={`nav-tab ${activeTab === t.id ? 'active' : ''}`}
+              onClick={() => { setActiveTab(t.id); setSelectedGameId(null); }}
+            >
+              {t.label}
+            </button>
+          ))}
+          {activeTab === 'game-detail' && (
+            <button className="nav-tab active">Game Detail</button>
+          )}
+        </nav>
+      )}
 
       {updateAvailable && (
         <div className="offline-banner" style={{ background: 'var(--accent)', color: '#000' }}>
