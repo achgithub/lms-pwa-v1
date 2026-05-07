@@ -5,6 +5,7 @@ import { authMiddleware } from './middleware/auth'
 import { verifyJWT } from './lib/jwt'
 import authRoutes from './routes/auth'
 import dataRoutes from './routes/data'
+import pushRoutes from './routes/push'
 
 const app = new Hono<HonoEnv>().basePath('/api')
 
@@ -57,5 +58,6 @@ app.use('*', async (c, next) => {
 })
 
 app.route('/', dataRoutes)
+app.route('/push', pushRoutes)
 
 export const onRequest = handle(app)

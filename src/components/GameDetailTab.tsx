@@ -4,6 +4,7 @@ import type { PickResult } from '../types';
 import * as db from '../db';
 import * as logic from '../gameLogic';
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../api/client';
 
 function fixtureLabel(team: Team, fixtures: Fixture[]): string {
   const matches = fixtures.filter(f => f.homeTeamName === team.name || f.awayTeamName === team.name);
@@ -64,6 +65,8 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
   const [addingPlayer, setAddingPlayer] = useState(false);
 
   const [busy, setBusy] = useState(false);
+  const [notifyBusy, setNotifyBusy] = useState(false);
+  const [notifyStatus, setNotifyStatus] = useState('');
   const [allFixtures, setAllFixtures] = useState<Fixture[]>([]);
   const [selectedFixtureIds, setSelectedFixtureIds] = useState<number[]>([]);
   const [roundFixtures, setRoundFixtures] = useState<Fixture[]>([]);
@@ -278,6 +281,21 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
       setError(String(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  // ── Send push notification ───────────────────────────────────────────────
+
+  async function handleNotify(type: 'round-opened' | 'closing-soon' | 'eliminated') {
+    setNotifyBusy(true);
+    setNotifyStatus('');
+    try {
+      const { sent } = await api.post<{ sent: number }>('/push/notify', { gameId, type });
+      setNotifyStatus(sent === 0 ? 'No subscribers found' : `Sent to ${sent}`);
+    } catch {
+      setNotifyStatus('Failed to send');
+    } finally {
+      setNotifyBusy(false);
     }
   }
 
@@ -575,6 +593,44 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
       ) : (
         <div className="card">
           <div className="alert alert-info">No open round. Something may have gone wrong — try reloading.</div>
+        </div>
+      )}
+
+      {/* ── Notify players ── */}
+      {!actingAsPlayer && game.status === 'active' && (
+        <div className="card mt-16">
+          <div className="section-header">
+            <h3 className="section-title" style={{ marginBottom: 0 }}>Notify Players</h3>
+            {notifyStatus && (
+              <span className="text-muted" style={{ fontSize: 13 }}>{notifyStatus}</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => handleNotify('round-opened')}
+              disabled={notifyBusy}
+            >
+              Round Open
+            </button>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => handleNotify('closing-soon')}
+              disabled={notifyBusy}
+            >
+              Closing Soon
+            </button>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => handleNotify('eliminated')}
+              disabled={notifyBusy}
+            >
+              Eliminated
+            </button>
+          </div>
+          <p className="text-muted" style={{ fontSize: 12, marginTop: 8 }}>
+            Sends a push notification to players who have enabled it. "Eliminated" targets the most recently knocked-out players.
+          </p>
         </div>
       )}
 

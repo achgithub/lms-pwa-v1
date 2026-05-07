@@ -9,6 +9,7 @@ import GameDetailTab from './components/GameDetailTab';
 import ReportsTab from './components/ReportsTab';
 import ToolsTab from './components/ToolsTab';
 import { useOnlineSync } from './hooks/useOnlineSync';
+import { usePushSubscription } from './hooks/usePushSubscription';
 import { api } from './api/client';
 
 type Tab = 'setup' | 'games' | 'game-detail' | 'reports' | 'tools';
@@ -19,6 +20,7 @@ function MainApp() {
   const [activeTab, setActiveTab] = useState<Tab>('games');
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
   const isOnline = useOnlineSync();
+  usePushSubscription();
 
   function openGame(id: number) {
     setSelectedGameId(id);
