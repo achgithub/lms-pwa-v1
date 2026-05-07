@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import SetupPage from './components/auth/SetupPage';
 import LoginPage from './components/auth/LoginPage';
@@ -9,15 +9,81 @@ import GameDetailTab from './components/GameDetailTab';
 import ReportsTab from './components/ReportsTab';
 import ToolsTab from './components/ToolsTab';
 import { useOnlineSync } from './hooks/useOnlineSync';
+import { usePushSubscription } from './hooks/usePushSubscription';
 import { api } from './api/client';
 
 type Tab = 'setup' | 'games' | 'game-detail' | 'reports' | 'tools';
+
+function SettingsPanel({ onClose }: { onClose: () => void }) {
+  const { supported, permission, subscribed, busy, enable, disable } = usePushSubscription()
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [onClose])
+
+  return (
+    <div ref={ref} style={{
+      position: 'absolute',
+      top: 'calc(100% + 8px)',
+      right: 0,
+      background: 'var(--surface)',
+      border: '1px solid var(--border)',
+      borderRadius: 'var(--radius)',
+      padding: '16px',
+      minWidth: 260,
+      zIndex: 100,
+      boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+    }}>
+      <div style={{ fontWeight: 600, marginBottom: 12, fontSize: 14 }}>Settings</div>
+
+      {supported && (
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+            Notifications
+          </div>
+          {permission === 'denied' ? (
+            <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
+              Blocked in browser settings.
+            </p>
+          ) : subscribed ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ fontSize: 13 }}>Push notifications on</span>
+              <button className="btn btn-ghost btn-sm" onClick={disable} disabled={busy}>
+                {busy ? <span className="spinner" /> : 'Turn off'}
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <span className="text-muted" style={{ fontSize: 13 }}>Get round alerts</span>
+              <button className="btn btn-primary btn-sm" onClick={enable} disabled={busy}>
+                {busy ? <span className="spinner" /> : 'Enable'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // Only rendered when the user is authenticated — safe to sync
 function MainApp() {
   const { user, isManager, isPlayer, viewMode, setViewMode, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('games');
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   const isOnline = useOnlineSync();
 
   function openGame(id: number) {
@@ -57,6 +123,17 @@ function MainApp() {
             </button>
           )}
           <span className="text-muted" style={{ fontSize: 13 }}>{user!.name}</span>
+          <div style={{ position: 'relative' }}>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setShowSettings(s => !s)}
+              aria-label="Settings"
+              style={{ padding: '4px 8px', fontSize: 16, lineHeight: 1 }}
+            >
+              ⚙
+            </button>
+            {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+          </div>
           <button className="btn btn-ghost btn-sm" onClick={logout}>Sign out</button>
         </div>
       </header>
