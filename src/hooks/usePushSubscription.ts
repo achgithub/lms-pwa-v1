@@ -18,7 +18,6 @@ export function usePushSubscription() {
   )
   const [subscribed, setSubscribed] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
 
   useEffect(() => {
     if (!supported) return
@@ -57,8 +56,8 @@ export function usePushSubscription() {
       })
       setPermission('granted')
       setSubscribed(true)
-    } catch (e) {
-      setError(String(e))
+    } catch {
+      // Non-fatal
     } finally {
       setBusy(false)
     }
@@ -83,5 +82,5 @@ export function usePushSubscription() {
     }
   }
 
-  return { supported, permission, subscribed, busy, error, enable, disable }
+  return { supported, permission, subscribed, busy, enable, disable }
 }

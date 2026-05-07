@@ -6,15 +6,6 @@ import type { PushSubscription } from '../lib/webpush'
 
 const push = new Hono<HonoEnv>()
 
-// Temporary debug endpoint — remove before go-live
-push.get('/debug/:gameId', requireRole('admin', 'manager'), async (c) => {
-  const gameId = Number(c.req.param('gameId'))
-  const [subs, participants] = await Promise.all([
-    c.env.DB.prepare(`SELECT user_id, endpoint FROM push_subscriptions`).all(),
-    c.env.DB.prepare(`SELECT player_name, user_id, is_active, game_id FROM participants WHERE game_id = ?`).bind(gameId).all(),
-  ])
-  return c.json({ subscriptions: subs.results, participants: participants.results })
-})
 
 push.get('/vapid-public-key', (c) => {
   const key = c.env.VAPID_PUBLIC_KEY
@@ -84,12 +75,11 @@ push.post('/notify', requireRole('admin', 'manager'), async (c) => {
   const bindings = type === 'eliminated' ? [gameId, gameId] : [gameId]
   const { results: subs } = await c.env.DB.prepare(subsSQL).bind(...bindings).all<PushSubscription>()
 
-  if (subs.length === 0) return c.json({ sent: 0, debug: { gameId, type, subsFound: subs.length } })
+  if (subs.length === 0) return c.json({ sent: 0 })
 
   const message = notifyMessage(type)
   let sent = 0
   const expiredEndpoints: string[] = []
-  const errors: string[] = []
 
   await Promise.allSettled(
     subs.map(async (sub) => {
@@ -98,7 +88,6 @@ push.post('/notify', requireRole('admin', 'manager'), async (c) => {
         sent++
       } catch (e) {
         if (e instanceof PushGoneError) expiredEndpoints.push(sub.endpoint)
-        else errors.push(String(e))
       }
     })
   )
@@ -112,7 +101,7 @@ push.post('/notify', requireRole('admin', 'manager'), async (c) => {
     )
   }
 
-  return c.json({ sent, errors })
+  return c.json({ sent })
 })
 
 function notifyMessage(type: NotifyType): { title: string; body: string } {
