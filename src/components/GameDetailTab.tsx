@@ -11,12 +11,12 @@ function fixtureLabel(team: Team, fixtures: Fixture[]): string {
   const parts = matches.map(f => {
     const isHome = f.homeTeamName === team.name;
     const opponent = isHome ? f.awayTeamName : f.homeTeamName;
-    const venue = isHome ? 'vs' : '@';
+    const venue = isHome ? 'Home' : 'Away';
     const d = new Date(f.utcDate);
     const dateStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-    return `${venue} ${opponent} (${dateStr})`;
+    return `${venue} vs ${opponent}, ${dateStr}`;
   });
-  return `${team.name} — ${parts.join(', ')}`;
+  return `${team.name} (${parts.join(' / ')})`;
 }
 
 type FixtureOutcome = 'home' | 'draw' | 'away' | 'postponed';
