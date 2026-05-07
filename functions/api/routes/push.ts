@@ -17,11 +17,18 @@ push.post('/subscribe', async (c) => {
   const { endpoint, p256dh, auth } = await c.req.json<{ endpoint: string; p256dh: string; auth: string }>()
   if (!endpoint || !p256dh || !auth) return c.json({ error: 'Invalid subscription' }, 400)
 
-  await c.env.DB.prepare(`
-    INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT (user_id, endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth
-  `).bind(userId, endpoint, p256dh, auth).run()
+  const userName = c.get('userName')
+
+  await c.env.DB.batch([
+    c.env.DB.prepare(`
+      INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT (user_id, endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth
+    `).bind(userId, endpoint, p256dh, auth),
+    c.env.DB.prepare(`
+      UPDATE participants SET user_id = ? WHERE player_name = ? COLLATE NOCASE AND user_id IS NULL
+    `).bind(userId, userName),
+  ])
 
   return new Response(null, { status: 204 })
 })
@@ -51,39 +58,22 @@ push.post('/notify', requireRole('admin', 'manager'), async (c) => {
 
   const privateKeyJwk = JSON.parse(vapidPrivateKeyJwk) as JsonWebKey
 
-  // Resolve which participant names to notify
-  let playerNames: string[]
+  // Fetch subscriptions via participants.user_id (linked at subscribe time)
+  const subsSQL = type === 'eliminated'
+    ? `SELECT ps.endpoint, ps.p256dh, ps.auth
+       FROM push_subscriptions ps
+       JOIN participants p ON p.user_id = ps.user_id
+       WHERE p.game_id = ? AND p.is_active = 0
+         AND p.eliminated_in_round = (
+           SELECT MAX(r.round_number) FROM rounds r WHERE r.game_id = ? AND r.status = 'closed'
+         )`
+    : `SELECT ps.endpoint, ps.p256dh, ps.auth
+       FROM push_subscriptions ps
+       JOIN participants p ON p.user_id = ps.user_id
+       WHERE p.game_id = ? AND p.is_active = 1`
 
-  if (type === 'eliminated') {
-    // Players eliminated in the most recently closed round for this game
-    const { results } = await c.env.DB.prepare(`
-      SELECT DISTINCT p.player_name
-      FROM participants p
-      WHERE p.game_id = ?
-        AND p.is_active = 0
-        AND p.eliminated_in_round = (
-          SELECT MAX(r.round_number) FROM rounds r WHERE r.game_id = ? AND r.status = 'closed'
-        )
-    `).bind(gameId, gameId).all<{ player_name: string }>()
-    playerNames = results.map(r => r.player_name)
-  } else {
-    // All active participants
-    const { results } = await c.env.DB.prepare(`
-      SELECT player_name FROM participants WHERE game_id = ? AND is_active = 1
-    `).bind(gameId).all<{ player_name: string }>()
-    playerNames = results.map(r => r.player_name)
-  }
-
-  if (playerNames.length === 0) return c.json({ sent: 0 })
-
-  // Fetch push subscriptions for matched users
-  const placeholders = playerNames.map(() => '?').join(',')
-  const { results: subs } = await c.env.DB.prepare(`
-    SELECT ps.endpoint, ps.p256dh, ps.auth
-    FROM push_subscriptions ps
-    JOIN users u ON u.id = ps.user_id
-    WHERE u.name IN (${placeholders}) COLLATE NOCASE
-  `).bind(...playerNames).all<PushSubscription>()
+  const bindings = type === 'eliminated' ? [gameId, gameId] : [gameId]
+  const { results: subs } = await c.env.DB.prepare(subsSQL).bind(...bindings).all<PushSubscription>()
 
   if (subs.length === 0) return c.json({ sent: 0 })
 

@@ -48,32 +48,34 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
     }}>
       <div style={{ fontWeight: 600, marginBottom: 12, fontSize: 14 }}>Settings</div>
 
-      {supported && (
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-            Notifications
-          </div>
-          {permission === 'denied' ? (
-            <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
-              Blocked in browser settings.
-            </p>
-          ) : subscribed ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <span style={{ fontSize: 13 }}>Notifications enabled</span>
-              <button className="btn btn-ghost btn-sm" onClick={disable} disabled={busy}>
-                {busy ? <span className="spinner" /> : 'Turn off'}
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <span className="text-muted" style={{ fontSize: 13 }}>Enable notifications</span>
-              <button className="btn btn-primary btn-sm" onClick={enable} disabled={busy}>
-                {busy ? <span className="spinner" /> : 'Enable'}
-              </button>
-            </div>
-          )}
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+          Notifications
         </div>
-      )}
+        {!supported ? (
+          <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
+            Not available — install the app to your home screen to enable push notifications.
+          </p>
+        ) : permission === 'denied' ? (
+          <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
+            Blocked in browser settings.
+          </p>
+        ) : subscribed ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <span style={{ fontSize: 13 }}>Notifications enabled</span>
+            <button className="btn btn-ghost btn-sm" onClick={disable} disabled={busy}>
+              {busy ? <span className="spinner" /> : 'Turn off'}
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <span className="text-muted" style={{ fontSize: 13 }}>Enable notifications</span>
+            <button className="btn btn-primary btn-sm" onClick={enable} disabled={busy}>
+              {busy ? <span className="spinner" /> : 'Enable'}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
