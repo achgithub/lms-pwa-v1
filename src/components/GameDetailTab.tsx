@@ -205,6 +205,50 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
     }
   }
 
+  // ── Finalise picks (auto-assign missing, then enter results) ─────────────
+
+  async function handleFinalisePicks() {
+    if (!openRound) return;
+    const latestPicks = await db.getPicks(gameId);
+    const latestRoundPicks = latestPicks.filter(p => p.roundId === openRound.id);
+    const playersWithoutPicks = activeParticipants
+      .filter(p => !latestRoundPicks.some(cp => cp.playerName === p.playerName && cp.teamId != null))
+      .map(p => p.playerName);
+
+    if (playersWithoutPicks.length === 0) {
+      await load(); // already complete, just refresh to show results phase
+      return;
+    }
+
+    const matchdayTeamNames = new Set(roundFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
+    const teamsForAssign = matchdayTeamNames.size > 0 ? teams.filter(t => matchdayTeamNames.has(t.name)) : teams;
+    const assignments = logic.autoAssignTeams(playersWithoutPicks, teamsForAssign, latestRoundPicks, rounds, standings);
+    setPendingAutoAssignments(assignments.length > 0 ? assignments : []);
+  }
+
+  async function confirmFinalisePicks(autoAssignments: AutoAssignment[]) {
+    if (!openRound) return;
+    setBusy(true);
+    setError('');
+    setPendingAutoAssignments(null);
+    try {
+      for (const { playerName, team } of autoAssignments) {
+        const existing = picks.find(p => p.roundId === openRound.id && p.playerName === playerName);
+        const saved = await db.upsertPick({
+          id: existing?.id,
+          gameId, roundId: openRound.id, playerName,
+          teamId: team.id, teamName: team.name, autoAssigned: true,
+        });
+        setPicks(prev => [...prev.filter(p => p.id !== saved.id), saved]);
+      }
+      await load(); // reload → allActiveHavePick becomes true → results phase shows
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // ── Apply results and close round ────────────────────────────────────────
 
   async function handleCloseRound() {
@@ -218,43 +262,9 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
       return;
     }
 
-    // Check for players without picks — show confirmation before proceeding
-    const latestPicks = await db.getPicks(gameId);
-    const latestRoundPicks = latestPicks.filter(p => p.roundId === openRound.id);
-    const playersWithoutPicks = activeParticipants
-      .filter(p => !latestRoundPicks.some(cp => cp.playerName === p.playerName && cp.teamId != null))
-      .map(p => p.playerName);
-
-    if (playersWithoutPicks.length > 0) {
-      const matchdayTeamNames = new Set(roundFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
-      const teamsForAssign = matchdayTeamNames.size > 0 ? teams.filter(t => matchdayTeamNames.has(t.name)) : teams;
-      const assignments = logic.autoAssignTeams(playersWithoutPicks, teamsForAssign, latestRoundPicks, rounds, standings);
-      if (assignments.length > 0) {
-        setPendingAutoAssignments(assignments);
-        return; // pause — manager must confirm
-      }
-    }
-
-    await doCloseRound([]);
-  }
-
-  async function doCloseRound(autoAssignments: AutoAssignment[]) {
-    if (!openRound || !game) return;
     setBusy(true);
     setError('');
-    setPendingAutoAssignments(null);
     try {
-      // Save auto-assigned picks first
-      for (const { playerName, team } of autoAssignments) {
-        const existing = picks.find(p => p.roundId === openRound.id && p.playerName === playerName);
-        const saved = await db.upsertPick({
-          id: existing?.id,
-          gameId, roundId: openRound.id, playerName,
-          teamId: team.id, teamName: team.name, autoAssigned: true,
-        });
-        setPicks(prev => [...prev.filter(p => p.id !== saved.id), saved]);
-      }
-
       // Save results to picks
       for (const [teamName, result] of Object.entries(pendingResults)) {
         const teamPicks = picksByTeam.get(teamName) ?? [];
@@ -467,9 +477,16 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                   Round {game.currentRound} — Assign Picks
                   {openRound.fixtureIds?.length ? <span className="text-muted" style={{ fontWeight: 400, marginLeft: 8 }}>{openRound.fixtureIds.length} fixtures</span> : null}
                 </h3>
-                <button className="btn btn-primary" onClick={saveAllPicks} disabled={busy}>
-                  {busy ? <><span className="spinner" /> Saving…</> : actingAsPlayer ? 'Save Pick' : 'Save Picks'}
-                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-primary" onClick={saveAllPicks} disabled={busy}>
+                    {busy ? <><span className="spinner" /> Saving…</> : actingAsPlayer ? 'Save Pick' : 'Save Picks'}
+                  </button>
+                  {!actingAsPlayer && (
+                    <button className="btn btn-success" onClick={handleFinalisePicks} disabled={busy}>
+                      Finalise Picks
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="table-wrap mt-12">
@@ -534,8 +551,8 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                 })}
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-primary" onClick={() => doCloseRound(pendingAutoAssignments)} disabled={busy}>
-                  {busy ? <><span className="spinner" /> Working…</> : 'Confirm & Close Round'}
+                <button className="btn btn-primary" onClick={() => confirmFinalisePicks(pendingAutoAssignments)} disabled={busy}>
+                  {busy ? <><span className="spinner" /> Working…</> : 'Confirm & Enter Results'}
                 </button>
                 <button className="btn btn-ghost" onClick={() => setPendingAutoAssignments(null)} disabled={busy}>
                   Cancel
