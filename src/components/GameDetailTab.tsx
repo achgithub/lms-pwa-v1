@@ -438,11 +438,9 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                   Round {game.currentRound} — Assign Picks
                   {openRound.fixtureIds?.length ? <span className="text-muted" style={{ fontWeight: 400, marginLeft: 8 }}>{openRound.fixtureIds.length} fixtures</span> : null}
                 </h3>
-                {!actingAsPlayer && (
-                  <button className="btn btn-primary" onClick={saveAllPicks} disabled={busy}>
-                    {busy ? <><span className="spinner" /> Saving…</> : 'Save Picks'}
-                  </button>
-                )}
+                <button className="btn btn-primary" onClick={saveAllPicks} disabled={busy}>
+                  {busy ? <><span className="spinner" /> Saving…</> : actingAsPlayer ? 'Save Pick' : 'Save Picks'}
+                </button>
               </div>
 
               <div className="table-wrap mt-12">

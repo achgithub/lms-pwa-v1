@@ -2,6 +2,37 @@ import { useEffect, useState, useCallback } from 'react';
 import type { Game, Group, Player } from '../types';
 import * as db from '../db';
 import { useAuth } from '../contexts/AuthContext';
+import { usePushSubscription } from '../hooks/usePushSubscription';
+
+function NotificationsCard() {
+  const { supported, permission, subscribed, busy, enable, disable } = usePushSubscription()
+  if (!supported) return null
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <h3 className="card-title" style={{ marginBottom: 8 }}>Notifications</h3>
+      {permission === 'denied' ? (
+        <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
+          Notifications are blocked. Enable them in your browser or device settings.
+        </p>
+      ) : subscribed ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span className="text-muted" style={{ fontSize: 13 }}>Push notifications are on.</span>
+          <button className="btn btn-ghost btn-sm" onClick={disable} disabled={busy}>
+            {busy ? <span className="spinner" /> : 'Turn off'}
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span className="text-muted" style={{ fontSize: 13 }}>Get notified when a new round opens.</span>
+          <button className="btn btn-primary btn-sm" onClick={enable} disabled={busy}>
+            {busy ? <span className="spinner" /> : 'Enable'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface Props {
   onSelectGame: (id: number) => void;
@@ -138,6 +169,7 @@ export default function GamesListTab({ onSelectGame }: Props) {
             ))}
           </div>
         )}
+        <NotificationsCard />
       </div>
     );
   }
@@ -335,6 +367,7 @@ export default function GamesListTab({ onSelectGame }: Props) {
           </div>
         </div>
       )}
+      <NotificationsCard />
     </div>
   );
 }

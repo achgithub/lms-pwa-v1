@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 
 function b64urlToBytes(b64: string): Uint8Array {
@@ -10,43 +10,77 @@ function b64urlToBytes(b64: string): Uint8Array {
   return view
 }
 
+const supported = typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window
+
 export function usePushSubscription() {
-  const attempted = useRef(false)
+  const [permission, setPermission] = useState<NotificationPermission>(
+    supported ? Notification.permission : 'denied'
+  )
+  const [subscribed, setSubscribed] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    if (attempted.current) return
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
-    if (Notification.permission === 'denied') return
-
-    attempted.current = true
-
-    ;(async () => {
-      try {
-        const { key } = await api.get<{ key: string }>('/push/vapid-public-key')
-
-        const reg = await navigator.serviceWorker.ready
-        let sub = await reg.pushManager.getSubscription()
-
-        if (!sub) {
-          if (Notification.permission === 'default') {
-            const perm = await Notification.requestPermission()
-            if (perm !== 'granted') return
-          }
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: b64urlToBytes(key).buffer.slice(0) as ArrayBuffer,
-          })
-        }
-
-        const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } }
-        await api.post('/push/subscribe', {
-          endpoint: json.endpoint,
-          p256dh: json.keys.p256dh,
-          auth: json.keys.auth,
-        })
-      } catch {
-        // Non-fatal — user just won't get push notifications
-      }
-    })()
+    if (!supported) return
+    navigator.serviceWorker.ready
+      .then(reg => reg.pushManager.getSubscription())
+      .then(sub => setSubscribed(!!sub))
+      .catch(() => {})
   }, [])
+
+  async function enable() {
+    if (!supported || busy) return
+    setBusy(true)
+    try {
+      const { key } = await api.get<{ key: string }>('/push/vapid-public-key')
+      const reg = await navigator.serviceWorker.ready
+
+      if (Notification.permission !== 'granted') {
+        const perm = await Notification.requestPermission()
+        setPermission(perm)
+        if (perm !== 'granted') return
+      }
+
+      let sub = await reg.pushManager.getSubscription()
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: b64urlToBytes(key).buffer.slice(0) as ArrayBuffer,
+        })
+      }
+
+      const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } }
+      await api.post('/push/subscribe', {
+        endpoint: json.endpoint,
+        p256dh: json.keys.p256dh,
+        auth: json.keys.auth,
+      })
+      setPermission('granted')
+      setSubscribed(true)
+    } catch {
+      // Non-fatal
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function disable() {
+    if (!supported || busy) return
+    setBusy(true)
+    try {
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.getSubscription()
+      if (sub) {
+        const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } }
+        await api.delete('/push/subscribe', { endpoint: json.endpoint })
+        await sub.unsubscribe()
+      }
+      setSubscribed(false)
+    } catch {
+      // Non-fatal
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return { supported, permission, subscribed, busy, enable, disable }
 }
