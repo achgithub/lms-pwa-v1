@@ -14,7 +14,8 @@ function fixtureLabel(team: Team, fixtures: Fixture[]): string {
     const venue = isHome ? 'Home' : 'Away';
     const d = new Date(f.utcDate);
     const dateStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-    return `${venue} vs ${opponent}, ${dateStr}`;
+    const timeStr = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    return `${venue} vs ${opponent}, ${dateStr} ${timeStr}`;
   });
   return `${team.name} (${parts.join(' / ')})`;
 }
