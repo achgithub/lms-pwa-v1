@@ -81,6 +81,9 @@ body {
   font-weight: 600;
   color: var(--text-muted);
 }
+@media (max-width: 480px) {
+  .app-title { display: none; }
+}
 
 /* ── Auth pages ──────────────────────────────────────────────────────────── */
 

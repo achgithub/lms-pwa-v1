@@ -59,14 +59,14 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
             </p>
           ) : subscribed ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <span style={{ fontSize: 13 }}>Push notifications on</span>
+              <span style={{ fontSize: 13 }}>Notifications enabled</span>
               <button className="btn btn-ghost btn-sm" onClick={disable} disabled={busy}>
                 {busy ? <span className="spinner" /> : 'Turn off'}
               </button>
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <span className="text-muted" style={{ fontSize: 13 }}>Get round alerts</span>
+              <span className="text-muted" style={{ fontSize: 13 }}>Enable notifications</span>
               <button className="btn btn-primary btn-sm" onClick={enable} disabled={busy}>
                 {busy ? <span className="spinner" /> : 'Enable'}
               </button>

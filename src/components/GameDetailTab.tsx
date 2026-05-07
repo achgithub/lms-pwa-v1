@@ -603,7 +603,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
               <span className="text-muted" style={{ fontSize: 13 }}>{notifyStatus}</span>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginTop: 12 }}>
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => handleNotify('round-opened')}
