@@ -31,7 +31,7 @@ async function signVapidJwt(privateKeyJwk: JsonWebKey, audience: string): Promis
   )
   const enc = (obj: unknown) => b64url(new TextEncoder().encode(JSON.stringify(obj)))
   const header  = enc({ alg: 'ES256', typ: 'JWT' })
-  const payload = enc({ aud: audience, exp: Math.floor(Date.now() / 1000) + 43200, sub: 'mailto:push@lms' })
+  const payload = enc({ aud: audience, exp: Math.floor(Date.now() / 1000) + 43200, sub: 'https://lms-pwa-v1.pages.dev' })
   const unsigned = `${header}.${payload}`
   const sig = await crypto.subtle.sign(
     { name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(unsigned),
@@ -102,5 +102,8 @@ export async function sendPush(
   })
 
   if (res.status === 404 || res.status === 410) throw new PushGoneError(sub.endpoint)
-  if (res.status !== 201 && !res.ok) throw new Error(`Push failed ${res.status}`)
+  if (res.status !== 201 && !res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Push failed ${res.status}: ${body}`)
+  }
 }
