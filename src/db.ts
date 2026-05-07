@@ -2,6 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { api } from './api/client';
 import type {
   Group, Team, Player, Game, Participant, Round, Pick, SyncData, GameDetail,
+  Fixture, MatchdayInfo,
 } from './types';
 
 // ── Schema ───────────────────────────────────────────────────────────────────
@@ -131,6 +132,20 @@ export async function deleteTeam(teamId: number, groupId: number): Promise<void>
     await tx.objectStore('groups').put({ ...group, teamCount: group.teamCount - 1 });
   }
   await tx.done;
+}
+
+// ── Fixtures ─────────────────────────────────────────────────────────────────
+
+export async function getMatchdays(): Promise<MatchdayInfo[]> {
+  return api.get<MatchdayInfo[]>('/fixtures/matchdays');
+}
+
+export async function getFixturesByMatchday(matchday: number): Promise<Fixture[]> {
+  return api.get<Fixture[]>(`/fixtures/matchday/${matchday}`);
+}
+
+export async function setRoundMatchday(roundId: number, matchday: number): Promise<Round> {
+  return api.patch<Round>(`/rounds/${roundId}/matchday`, { matchday });
 }
 
 // ── Players ───────────────────────────────────────────────────────────────────

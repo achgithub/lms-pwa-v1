@@ -1,9 +1,29 @@
 import { useEffect, useState, useCallback } from 'react';
-import type { Game, Participant, Round, Pick, Team } from '../types';
+import type { Game, Participant, Round, Pick, Team, Fixture, MatchdayInfo } from '../types';
 import type { PickResult } from '../types';
 import * as db from '../db';
 import * as logic from '../gameLogic';
 import { useAuth } from '../contexts/AuthContext';
+
+function formatMatchdayOption(m: MatchdayInfo): string {
+  const d = new Date(m.firstDate);
+  const dateStr = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return `GW${m.matchday} — w/c ${dateStr} (${m.fixtureCount} games)`;
+}
+
+function fixtureLabel(team: Team, fixtures: Fixture[]): string {
+  const matches = fixtures.filter(f => f.homeTeamName === team.name || f.awayTeamName === team.name);
+  if (matches.length === 0) return team.name;
+  const parts = matches.map(f => {
+    const isHome = f.homeTeamName === team.name;
+    const opponent = isHome ? f.awayTeamName : f.homeTeamName;
+    const venue = isHome ? 'vs' : '@';
+    const d = new Date(f.utcDate);
+    const dateStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    return `${venue} ${opponent} (${dateStr})`;
+  });
+  return `${team.name} — ${parts.join(', ')}`;
+}
 
 interface Props {
   gameId: number;
@@ -30,18 +50,41 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
   const [addingPlayer, setAddingPlayer] = useState(false);
 
   const [busy, setBusy] = useState(false);
+  const [matchdayOptions, setMatchdayOptions] = useState<MatchdayInfo[]>([]);
+  const [selectedMatchday, setSelectedMatchday] = useState<number | ''>('');
+  const [matchdayFixtures, setMatchdayFixtures] = useState<Fixture[]>([]);
+  const [savingMatchday, setSavingMatchday] = useState(false);
   const { user, actingAsPlayer } = useAuth();
 
   const load = useCallback(async () => {
     try {
-      const detail = await db.getGameDetail(gameId, actingAsPlayer);
+      const [detail, matchdays] = await Promise.all([
+        db.getGameDetail(gameId, actingAsPlayer),
+        db.getMatchdays().catch(() => [] as MatchdayInfo[]),
+      ]);
       if (!detail) { onBack(); return; }
       setGame(detail.game);
       setParticipants(detail.participants);
       setRounds(detail.rounds);
       setPicks(detail.picks);
+      setMatchdayOptions(matchdays);
+
       const t = await db.getTeamsByGroup(detail.game.groupId);
       setTeams(t);
+
+      // Load fixtures for the open round's matchday if already set
+      const openRound = detail.rounds.find(
+        r => r.roundNumber === detail.game.currentRound && r.status === 'open'
+      );
+      if (openRound?.matchday) {
+        const fixtures = await db.getFixturesByMatchday(openRound.matchday).catch(() => []);
+        setMatchdayFixtures(fixtures);
+      }
+
+      // Auto-select next upcoming matchday for the selector
+      const today = new Date().toISOString();
+      const next = matchdays.find(m => m.firstDate >= today);
+      setSelectedMatchday(next?.matchday ?? matchdays[matchdays.length - 1]?.matchday ?? '');
     } catch (e) {
       setError(String(e));
     } finally {
@@ -75,6 +118,23 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
       const arr = picksByTeam.get(pick.teamName) ?? [];
       arr.push(pick);
       picksByTeam.set(pick.teamName, arr);
+    }
+  }
+
+  // ── Set matchday ────────────────────────────────────────────────────────
+
+  async function handleSetMatchday() {
+    if (!openRound || !selectedMatchday) return;
+    setSavingMatchday(true);
+    try {
+      const updated = await db.setRoundMatchday(openRound.id, selectedMatchday as number);
+      setRounds(prev => prev.map(r => r.id === updated.id ? updated : r));
+      const fixtures = await db.getFixturesByMatchday(selectedMatchday as number);
+      setMatchdayFixtures(fixtures);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSavingMatchday(false);
     }
   }
 
@@ -119,7 +179,11 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
         .filter(p => !currentRoundPicks.some(cp => cp.playerName === p.playerName && cp.teamId != null))
         .map(p => p.playerName);
 
-      const assignments = logic.autoAssignTeams(playersWithoutPicks, teams, currentRoundPicks, rounds);
+      const matchdayTeamNames = new Set(matchdayFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
+      const teamsForAssign = matchdayTeamNames.size > 0
+        ? teams.filter(t => matchdayTeamNames.has(t.name))
+        : teams;
+      const assignments = logic.autoAssignTeams(playersWithoutPicks, teamsForAssign, currentRoundPicks, rounds);
       const newPicks: Pick[] = [];
       for (const { playerName, team } of assignments) {
         const saved = await db.upsertPick({
@@ -286,11 +350,44 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
         </div>
       ) : openRound ? (
         <>
+          {/* ── Matchday Selector ── */}
+          {!actingAsPlayer && !openRound.matchday && matchdayOptions.length > 0 && (
+            <div className="card">
+              <h3 className="card-title">Set Gameweek for Round {game.currentRound}</h3>
+              <p className="text-muted" style={{ marginBottom: 16 }}>
+                Select the gameweek this round corresponds to. Sorted by earliest fixture date.
+              </p>
+              <div className="form-row">
+                <div className="form-group">
+                  <select
+                    value={selectedMatchday}
+                    onChange={e => setSelectedMatchday(Number(e.target.value))}
+                  >
+                    <option value="">Select gameweek…</option>
+                    {matchdayOptions.map(m => (
+                      <option key={m.matchday} value={m.matchday}>{formatMatchdayOption(m)}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleSetMatchday}
+                  disabled={!selectedMatchday || savingMatchday}
+                >
+                  {savingMatchday ? <><span className="spinner" /> Saving…</> : 'Confirm Gameweek'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ── Picks Phase ── */}
           {picksPhase && (
             <div className="card">
               <div className="section-header">
-                <h3 className="card-title" style={{ marginBottom: 0 }}>Round {game.currentRound} — Assign Picks</h3>
+                <h3 className="card-title" style={{ marginBottom: 0 }}>
+                  Round {game.currentRound} — Assign Picks
+                  {openRound.matchday && <span className="text-muted" style={{ fontWeight: 400, marginLeft: 8 }}>GW{openRound.matchday}</span>}
+                </h3>
                 {!actingAsPlayer && (
                   <button
                     className="btn btn-primary"
@@ -318,6 +415,11 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                       const available = logic.availableTeams(p.playerName, teams, picks, rounds);
                       const selectedId = pendingPicks[p.playerName] ?? '';
 
+                      const matchdayTeamNames = new Set(matchdayFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
+                      const filteredAvailable = matchdayTeamNames.size > 0
+                        ? available.filter(t => matchdayTeamNames.has(t.name))
+                        : available;
+
                       return (
                         <tr key={p.id}>
                           <td style={{ fontWeight: 600 }}>{p.playerName}</td>
@@ -334,8 +436,8 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                               disabled={!!existingPick?.teamName}
                             >
                               <option value="">Select team…</option>
-                              {available.map(t => (
-                                <option key={t.id} value={t.id}>{t.name}</option>
+                              {filteredAvailable.map(t => (
+                                <option key={t.id} value={t.id}>{fixtureLabel(t, matchdayFixtures)}</option>
                               ))}
                             </select>
                           </td>

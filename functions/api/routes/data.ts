@@ -160,6 +160,40 @@ data.post('/admin/sync-fixtures', requireRole('admin'), async (c) => {
   return c.json({ synced: matches.length })
 })
 
+// ── Fixtures ──────────────────────────────────────────────────────────────────
+
+data.get('/fixtures/matchdays', async (c) => {
+  const { results } = await c.env.DB.prepare(`
+    SELECT matchday, MIN(utc_date) as firstDate, COUNT(*) as fixtureCount
+    FROM fixtures
+    GROUP BY matchday
+    ORDER BY MIN(utc_date) ASC
+  `).all<{ matchday: number; firstDate: string; fixtureCount: number }>()
+  return c.json(results)
+})
+
+data.get('/fixtures/matchday/:matchday', async (c) => {
+  const matchday = Number(c.req.param('matchday'))
+  const { results } = await c.env.DB.prepare(`
+    SELECT id, matchday, utc_date as utcDate, status,
+           home_team_name as homeTeamName, away_team_name as awayTeamName,
+           home_score as homeScore, away_score as awayScore, winner
+    FROM fixtures WHERE matchday = ? ORDER BY utc_date ASC
+  `).bind(matchday).all()
+  return c.json(results)
+})
+
+data.patch('/rounds/:id/matchday', requireRole('admin', 'manager'), async (c) => {
+  const id = Number(c.req.param('id'))
+  const { matchday } = await c.req.json<{ matchday: number }>()
+  if (!matchday) return c.json({ error: 'matchday required' }, 400)
+  await c.env.DB.prepare(`UPDATE rounds SET matchday = ? WHERE id = ?`).bind(matchday, id).run()
+  const round = await c.env.DB.prepare(
+    `SELECT id, game_id as gameId, round_number as roundNumber, status, matchday, created_at as createdAt FROM rounds WHERE id = ?`
+  ).bind(id).first<Round>()
+  return c.json(round)
+})
+
 // ── Players ───────────────────────────────────────────────────────────────────
 
 data.get('/players', async (c) => {
@@ -273,7 +307,7 @@ data.get('/games/:id', async (c) => {
       `SELECT id, game_id as gameId, player_name as playerName, is_active as isActive, eliminated_in_round as eliminatedInRound, created_at as createdAt FROM participants WHERE game_id = ?`
     ).bind(id).all<Record<string, unknown>>(),
     c.env.DB.prepare(
-      `SELECT id, game_id as gameId, round_number as roundNumber, status, created_at as createdAt FROM rounds WHERE game_id = ?`
+      `SELECT id, game_id as gameId, round_number as roundNumber, status, matchday, created_at as createdAt FROM rounds WHERE game_id = ?`
     ).bind(id).all<Round>(),
     c.env.DB.prepare(
       `SELECT id, game_id as gameId, round_id as roundId, player_name as playerName, team_id as teamId, team_name as teamName, result, auto_assigned as autoAssigned, created_at as createdAt FROM picks WHERE game_id = ?`
@@ -425,7 +459,7 @@ data.get('/sync', async (c) => {
     ;[gameRows, participantRows, roundRows, pickRows] = await Promise.all([
       c.env.DB.prepare(`${GAME_SELECT} ORDER BY g.created_at DESC`).all<Record<string, unknown>>().then(r => r.results),
       c.env.DB.prepare(`SELECT id, game_id as gameId, player_name as playerName, is_active as isActive, eliminated_in_round as eliminatedInRound, created_at as createdAt FROM participants`).all<Record<string, unknown>>().then(r => r.results),
-      c.env.DB.prepare(`SELECT id, game_id as gameId, round_number as roundNumber, status, created_at as createdAt FROM rounds`).all<Round>().then(r => r.results),
+      c.env.DB.prepare(`SELECT id, game_id as gameId, round_number as roundNumber, status, matchday, created_at as createdAt FROM rounds`).all<Round>().then(r => r.results),
       c.env.DB.prepare(`SELECT id, game_id as gameId, round_id as roundId, player_name as playerName, team_id as teamId, team_name as teamName, result, auto_assigned as autoAssigned, created_at as createdAt FROM picks`).all<Record<string, unknown>>().then(r => r.results),
     ]) as [Record<string, unknown>[], Record<string, unknown>[], Round[], Record<string, unknown>[]]
   } else {
@@ -447,7 +481,7 @@ data.get('/sync', async (c) => {
       ;[gameRows, participantRows, roundRows, pickRows] = await Promise.all([
         c.env.DB.prepare(`${GAME_SELECT} WHERE g.id IN (${ph}) ORDER BY g.created_at DESC`).bind(...ids).all<Record<string, unknown>>().then(r => r.results),
         c.env.DB.prepare(`SELECT id, game_id as gameId, player_name as playerName, is_active as isActive, eliminated_in_round as eliminatedInRound, created_at as createdAt FROM participants WHERE game_id IN (${ph})`).bind(...ids).all<Record<string, unknown>>().then(r => r.results),
-        c.env.DB.prepare(`SELECT id, game_id as gameId, round_number as roundNumber, status, created_at as createdAt FROM rounds WHERE game_id IN (${ph})`).bind(...ids).all<Round>().then(r => r.results),
+        c.env.DB.prepare(`SELECT id, game_id as gameId, round_number as roundNumber, status, matchday, created_at as createdAt FROM rounds WHERE game_id IN (${ph})`).bind(...ids).all<Round>().then(r => r.results),
         c.env.DB.prepare(`SELECT id, game_id as gameId, round_id as roundId, player_name as playerName, team_id as teamId, team_name as teamName, result, auto_assigned as autoAssigned, created_at as createdAt FROM picks WHERE game_id IN (${ph})`).bind(...ids).all<Record<string, unknown>>().then(r => r.results),
       ]) as [Record<string, unknown>[], Record<string, unknown>[], Round[], Record<string, unknown>[]]
     }

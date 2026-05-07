@@ -64,7 +64,26 @@ export interface Round {
   gameId: number;
   roundNumber: number;
   status: RoundStatus;
+  matchday?: number;
   createdAt: string;
+}
+
+export interface MatchdayInfo {
+  matchday: number;
+  firstDate: string;
+  fixtureCount: number;
+}
+
+export interface Fixture {
+  id: number;
+  matchday: number;
+  utcDate: string;
+  status: string;
+  homeTeamName: string;
+  awayTeamName: string;
+  homeScore?: number;
+  awayScore?: number;
+  winner?: string;
 }
 
 export interface Pick {
