@@ -1,4 +1,4 @@
-import type { Game, Participant, Pick, Round, Team } from './types';
+import type { Game, Participant, Pick, Round, Standing, Team } from './types';
 
 // ── Pick validation ──────────────────────────────────────────────────────────
 
@@ -113,31 +113,55 @@ export function computeAdvanceDecision(
  * Assigns available teams to players who haven't picked.
  * Returns an array of {playerName, team} assignments.
  */
+function sortByStandings(teams: Team[], standings: Standing[]): Team[] {
+  const posMap = new Map(standings.map(s => [s.teamName.toLowerCase(), s.position]));
+  return [...teams].sort((a, b) => {
+    const pa = posMap.get(a.name.toLowerCase()) ?? 0;
+    const pb = posMap.get(b.name.toLowerCase()) ?? 0;
+    // Bottom of table first (highest position number), ties broken alphabetically
+    if (pb !== pa) return pb - pa;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+export interface AutoAssignment {
+  playerName: string;
+  team: Team;
+  position: number | null;
+  standingsUpdatedAt: string | null;
+}
+
 export function autoAssignTeams(
   playersWithoutPicks: string[],
   teams: Team[],
   existingPicks: Pick[],
-  rounds: Round[]
-): Array<{ playerName: string; team: Team }> {
-  const assignments: Array<{ playerName: string; team: Team }> = [];
+  rounds: Round[],
+  standings: Standing[] = [],
+): AutoAssignment[] {
+  const posMap = new Map(standings.map(s => [s.teamName.toLowerCase(), s]));
+  const updatedAt = standings.length > 0 ? standings[0].updatedAt : null;
+  const assignments: AutoAssignment[] = [];
   const alreadyAssignedThisRound = new Set(existingPicks.map(p => p.teamName).filter(Boolean));
+  const sorted = sortByStandings(teams, standings);
 
   for (const playerName of playersWithoutPicks) {
-    const available = availableTeams(playerName, teams, existingPicks, rounds).filter(
+    const available = availableTeams(playerName, sorted, existingPicks, rounds).filter(
       t => !alreadyAssignedThisRound.has(t.name)
     );
-    if (available.length > 0) {
-      const team = available[Math.floor(Math.random() * available.length)];
-      assignments.push({ playerName, team });
+    const pool = available.length > 0
+      ? available
+      : availableTeams(playerName, sorted, existingPicks, rounds);
+
+    if (pool.length > 0) {
+      const team = pool[0]; // sorted bottom-first, take the first
+      const standing = posMap.get(team.name.toLowerCase());
+      assignments.push({
+        playerName,
+        team,
+        position: standing?.position ?? null,
+        standingsUpdatedAt: standing ? updatedAt : null,
+      });
       alreadyAssignedThisRound.add(team.name);
-    }
-    // If no unique team is available, allow any available team (no uniqueness guarantee)
-    else {
-      const fallback = availableTeams(playerName, teams, existingPicks, rounds);
-      if (fallback.length > 0) {
-        const team = fallback[Math.floor(Math.random() * fallback.length)];
-        assignments.push({ playerName, team });
-      }
     }
   }
 

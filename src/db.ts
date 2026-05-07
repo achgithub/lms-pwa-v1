@@ -2,7 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { api } from './api/client';
 import type {
   Group, Team, Player, Game, Participant, Round, Pick, SyncData, GameDetail,
-  Fixture,
+  Fixture, Standing,
 } from './types';
 
 // ── Schema ───────────────────────────────────────────────────────────────────
@@ -138,6 +138,10 @@ export async function deleteTeam(teamId: number, groupId: number): Promise<void>
 
 export async function getAllFixtures(): Promise<Fixture[]> {
   return api.get<Fixture[]>('/fixtures');
+}
+
+export async function getStandings(): Promise<Standing[]> {
+  return api.get<Standing[]>('/standings');
 }
 
 export async function setRoundFixtures(roundId: number, fixtureIds: number[]): Promise<Round> {

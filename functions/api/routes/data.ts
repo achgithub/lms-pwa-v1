@@ -168,6 +168,42 @@ data.post('/admin/sync-fixtures', requireRole('admin'), async (c) => {
   return c.json({ synced: matches.length })
 })
 
+// ── Standings ─────────────────────────────────────────────────────────────────
+
+interface FDStandingEntry {
+  position: number
+  team: { id: number; name: string }
+}
+
+data.post('/admin/sync-standings', requireRole('admin'), async (c) => {
+  const body = await c.req.json<{ standings: { type: string; table: FDStandingEntry[] }[] }>()
+  const table = body.standings?.find(s => s.type === 'TOTAL')?.table
+  if (!Array.isArray(table) || table.length === 0) return c.json({ error: 'standings TOTAL table required' }, 400)
+
+  const now = new Date().toISOString()
+  const stmts = table.map(entry =>
+    c.env.DB.prepare(`
+      INSERT INTO standings (external_id, team_name, position, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(external_id) DO UPDATE SET
+        team_name  = excluded.team_name,
+        position   = excluded.position,
+        updated_at = excluded.updated_at
+    `).bind(entry.team.id, entry.team.name, entry.position, now)
+  )
+
+  await c.env.DB.batch(stmts)
+  return c.json({ synced: table.length, updatedAt: now })
+})
+
+data.get('/standings', async (c) => {
+  const { results } = await c.env.DB.prepare(`
+    SELECT external_id as externalId, team_name as teamName, position, updated_at as updatedAt
+    FROM standings ORDER BY position ASC
+  `).all()
+  return c.json(results)
+})
+
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 data.get('/fixtures', async (c) => {

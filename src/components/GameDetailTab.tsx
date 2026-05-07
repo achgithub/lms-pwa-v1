@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
-import type { Game, Participant, Round, Pick, Team, Fixture } from '../types';
+import type { Game, Participant, Round, Pick, Team, Fixture, Standing } from '../types';
 import type { PickResult } from '../types';
+import type { AutoAssignment } from '../gameLogic';
 import * as db from '../db';
 import * as logic from '../gameLogic';
 import { useAuth } from '../contexts/AuthContext';
@@ -81,14 +82,18 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
   const [selectedFixtureIds, setSelectedFixtureIds] = useState<number[]>([]);
   const [roundFixtures, setRoundFixtures] = useState<Fixture[]>([]);
   const [savingFixtures, setSavingFixtures] = useState(false);
+  const [standings, setStandings] = useState<Standing[]>([]);
+  const [pendingAutoAssignments, setPendingAutoAssignments] = useState<AutoAssignment[] | null>(null);
   const { user, actingAsPlayer } = useAuth();
 
   const load = useCallback(async () => {
     try {
-      const [detail, fixtures] = await Promise.all([
+      const [detail, fixtures, standingsData] = await Promise.all([
         db.getGameDetail(gameId, actingAsPlayer),
         db.getAllFixtures().catch(() => [] as Fixture[]),
+        db.getStandings().catch(() => [] as Standing[]),
       ]);
+      setStandings(standingsData);
       if (!detail) { onBack(); return; }
       setGame(detail.game);
       setParticipants(detail.participants);
@@ -213,9 +218,43 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
       return;
     }
 
+    // Check for players without picks — show confirmation before proceeding
+    const latestPicks = await db.getPicks(gameId);
+    const latestRoundPicks = latestPicks.filter(p => p.roundId === openRound.id);
+    const playersWithoutPicks = activeParticipants
+      .filter(p => !latestRoundPicks.some(cp => cp.playerName === p.playerName && cp.teamId != null))
+      .map(p => p.playerName);
+
+    if (playersWithoutPicks.length > 0) {
+      const matchdayTeamNames = new Set(roundFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
+      const teamsForAssign = matchdayTeamNames.size > 0 ? teams.filter(t => matchdayTeamNames.has(t.name)) : teams;
+      const assignments = logic.autoAssignTeams(playersWithoutPicks, teamsForAssign, latestRoundPicks, rounds, standings);
+      if (assignments.length > 0) {
+        setPendingAutoAssignments(assignments);
+        return; // pause — manager must confirm
+      }
+    }
+
+    await doCloseRound([]);
+  }
+
+  async function doCloseRound(autoAssignments: AutoAssignment[]) {
+    if (!openRound || !game) return;
     setBusy(true);
     setError('');
+    setPendingAutoAssignments(null);
     try {
+      // Save auto-assigned picks first
+      for (const { playerName, team } of autoAssignments) {
+        const existing = picks.find(p => p.roundId === openRound.id && p.playerName === playerName);
+        const saved = await db.upsertPick({
+          id: existing?.id,
+          gameId, roundId: openRound.id, playerName,
+          teamId: team.id, teamName: team.name, autoAssigned: true,
+        });
+        setPicks(prev => [...prev.filter(p => p.id !== saved.id), saved]);
+      }
+
       // Save results to picks
       for (const [teamName, result] of Object.entries(pendingResults)) {
         const teamPicks = picksByTeam.get(teamName) ?? [];
@@ -471,8 +510,42 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
             </div>
           )}
 
+          {/* ── Auto-assign confirmation ── */}
+          {pendingAutoAssignments && (
+            <div className="card" style={{ border: '1px solid var(--accent)' }}>
+              <h3 className="card-title" style={{ marginBottom: 8 }}>Auto-assign picks</h3>
+              <p className="text-muted" style={{ fontSize: 13, marginBottom: 12 }}>
+                The following players have no pick. These will be assigned before closing the round:
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                {pendingAutoAssignments.map(({ playerName, team, position, standingsUpdatedAt }) => {
+                  const posLabel = position != null ? `position ${position}` : 'no standings data';
+                  const dateLabel = standingsUpdatedAt
+                    ? new Date(standingsUpdatedAt).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : null;
+                  return (
+                    <div key={playerName} style={{ fontSize: 14 }}>
+                      <strong>{playerName}</strong> → {team.name}
+                      <span className="text-muted" style={{ fontSize: 12, marginLeft: 8 }}>
+                        {posLabel}{dateLabel ? `, standings as at ${dateLabel}` : ''}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-primary" onClick={() => doCloseRound(pendingAutoAssignments)} disabled={busy}>
+                  {busy ? <><span className="spinner" /> Working…</> : 'Confirm & Close Round'}
+                </button>
+                <button className="btn btn-ghost" onClick={() => setPendingAutoAssignments(null)} disabled={busy}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ── Results Phase ── */}
-          {resultsPhase && (
+          {resultsPhase && !pendingAutoAssignments && (
             <div className="card">
               <div className="section-header">
                 <h3 className="card-title" style={{ marginBottom: 0 }}>

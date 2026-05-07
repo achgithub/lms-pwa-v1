@@ -68,6 +68,13 @@ export interface Round {
   createdAt: string;
 }
 
+export interface Standing {
+  externalId: number;
+  teamName: string;
+  position: number;
+  updatedAt: string;
+}
+
 export interface Fixture {
   id: number;
   matchday: number;
