@@ -30,6 +30,16 @@ function outcomeToResults(outcome: FixtureOutcome): { home: PickResult; away: Pi
   return                              { home: 'postponed', away: 'postponed' };
 }
 
+function fixtureResultHint(f: Fixture): string {
+  if (f.status === 'FINISHED' && f.homeScore != null && f.awayScore != null)
+    return `Result: ${f.homeTeamName} ${f.homeScore} – ${f.awayScore} ${f.awayTeamName}`
+  if (f.status === 'POSTPONED') return 'Postponed'
+  if (f.status === 'CANCELLED') return 'Cancelled'
+  if (f.status === 'IN_PLAY' || f.status === 'PAUSED' || f.status === 'HALFTIME')
+    return `Live: ${f.homeScore ?? 0} – ${f.awayScore ?? 0}`
+  return 'Awaiting result'
+}
+
 function activeOutcome(fixture: Fixture, pendingResults: Record<string, PickResult>): FixtureOutcome | null {
   const hr = pendingResults[fixture.homeTeamName];
   if (!hr) return null;
@@ -180,26 +190,6 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
           autoAssigned: false,
         });
         setPicks(prev => [...prev.filter(p => p.id !== saved.id), saved]);
-      }
-
-      // Auto-assign any players still without a pick
-      const latestPicks = await db.getPicks(gameId);
-      const latestRoundPicks = latestPicks.filter(p => p.roundId === openRound.id);
-      const playersWithoutPicks = activeParticipants
-        .filter(p => !latestRoundPicks.some(cp => cp.playerName === p.playerName && cp.teamId != null))
-        .map(p => p.playerName);
-
-      if (playersWithoutPicks.length > 0) {
-        const matchdayTeamNames = new Set(roundFixtures.flatMap(f => [f.homeTeamName, f.awayTeamName]));
-        const teamsForAssign = matchdayTeamNames.size > 0 ? teams.filter(t => matchdayTeamNames.has(t.name)) : teams;
-        const assignments = logic.autoAssignTeams(playersWithoutPicks, teamsForAssign, latestRoundPicks, rounds);
-        for (const { playerName, team } of assignments) {
-          const saved = await db.upsertPick({
-            gameId, roundId: openRound.id, playerName,
-            teamId: team.id, teamName: team.name, autoAssigned: true,
-          });
-          setPicks(prev => [...prev.filter(p => p.id !== saved.id), saved]);
-        }
       }
 
       await load();
@@ -522,10 +512,13 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                             <span style={{ fontWeight: 700 }}>{f.awayTeamName}</span>
                             <span className="text-muted" style={{ fontSize: 13 }}>{dateStr}</span>
                           </div>
-                          <div className="text-muted" style={{ fontSize: 13, marginBottom: 10 }}>
+                          <div className="text-muted" style={{ fontSize: 13, marginBottom: 6 }}>
                             {homePicks.length > 0 && <span>{f.homeTeamName}: <strong>{homePicks.map(p => p.playerName).join(', ')}</strong></span>}
                             {homePicks.length > 0 && awayPicks.length > 0 && <span> · </span>}
                             {awayPicks.length > 0 && <span>{f.awayTeamName}: <strong>{awayPicks.map(p => p.playerName).join(', ')}</strong></span>}
+                          </div>
+                          <div style={{ fontSize: 12, color: f.status === 'FINISHED' ? 'var(--accent)' : 'var(--text-muted)', marginBottom: 8 }}>
+                            {fixtureResultHint(f)}
                           </div>
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                             {([
