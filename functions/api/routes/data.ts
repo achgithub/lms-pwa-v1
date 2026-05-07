@@ -78,12 +78,16 @@ data.post('/groups/:groupId/teams', requireRole('admin'), async (c) => {
 
 data.delete('/teams/:id', requireRole('admin'), async (c) => {
   const id = Number(c.req.param('id'))
-  const active = await c.env.DB.prepare(
-    `SELECT 1 FROM games g JOIN teams t ON t.group_id = g.group_id WHERE t.id = ? AND g.status = 'active' LIMIT 1`
-  ).bind(id).first()
-  if (active) return c.json({ error: 'This team belongs to a group with an active game and cannot be deleted' }, 409)
-  await c.env.DB.prepare('DELETE FROM teams WHERE id = ?').bind(id).run()
-  return new Response(null, { status: 204 })
+  try {
+    const active = await c.env.DB.prepare(
+      `SELECT 1 FROM games g JOIN teams t ON t.group_id = g.group_id WHERE t.id = ? AND g.status = 'active' LIMIT 1`
+    ).bind(id).first()
+    if (active) return c.json({ error: 'This team belongs to a group with an active game and cannot be deleted' }, 409)
+    await c.env.DB.prepare('DELETE FROM teams WHERE id = ?').bind(id).run()
+    return new Response(null, { status: 204 })
+  } catch (e) {
+    return c.json({ error: String(e) }, 500)
+  }
 })
 
 // ── Admin: Import PL teams from curl-posted football-data.org payload ────────
