@@ -89,6 +89,7 @@ push.post('/notify', requireRole('admin', 'manager'), async (c) => {
   const message = notifyMessage(type)
   let sent = 0
   const expiredEndpoints: string[] = []
+  const errors: string[] = []
 
   await Promise.allSettled(
     subs.map(async (sub) => {
@@ -97,6 +98,7 @@ push.post('/notify', requireRole('admin', 'manager'), async (c) => {
         sent++
       } catch (e) {
         if (e instanceof PushGoneError) expiredEndpoints.push(sub.endpoint)
+        else errors.push(String(e))
       }
     })
   )
@@ -110,7 +112,7 @@ push.post('/notify', requireRole('admin', 'manager'), async (c) => {
     )
   }
 
-  return c.json({ sent })
+  return c.json({ sent, errors })
 })
 
 function notifyMessage(type: NotifyType): { title: string; body: string } {
