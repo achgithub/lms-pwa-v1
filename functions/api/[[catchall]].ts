@@ -39,6 +39,19 @@ app.route('/auth', authRoutes)
 // (sub-router middleware can lose env bindings in Pages Functions)
 app.use('*', async (c, next) => {
   if (c.req.path.startsWith('/api/auth/')) return next()
+
+  // Allow SYNC_SECRET bearer token to call sync-fixtures without a user JWT
+  if (c.req.method === 'POST' && c.req.path === '/api/admin/sync-fixtures') {
+    const syncSecret = c.env.SYNC_SECRET
+    const header = c.req.header('Authorization')
+    if (syncSecret && header === `Bearer ${syncSecret}`) {
+      c.set('userId', 0)
+      c.set('userName', 'sync')
+      c.set('userRole', 'admin')
+      return next()
+    }
+  }
+
   return authMiddleware(c, next)
 })
 
