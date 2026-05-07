@@ -6,6 +6,16 @@ import type { PushSubscription } from '../lib/webpush'
 
 const push = new Hono<HonoEnv>()
 
+// Temporary debug endpoint — remove before go-live
+push.get('/debug/:gameId', requireRole('admin', 'manager'), async (c) => {
+  const gameId = Number(c.req.param('gameId'))
+  const [subs, participants] = await Promise.all([
+    c.env.DB.prepare(`SELECT user_id, endpoint FROM push_subscriptions`).all(),
+    c.env.DB.prepare(`SELECT player_name, user_id, is_active, game_id FROM participants WHERE game_id = ?`).bind(gameId).all(),
+  ])
+  return c.json({ subscriptions: subs.results, participants: participants.results })
+})
+
 push.get('/vapid-public-key', (c) => {
   const key = c.env.VAPID_PUBLIC_KEY
   if (!key) return c.json({ error: 'Push not configured' }, 503)
