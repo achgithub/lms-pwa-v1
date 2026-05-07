@@ -61,7 +61,7 @@ data.delete('/groups/:id', requireRole('admin'), async (c) => {
 data.get('/groups/:groupId/teams', async (c) => {
   const groupId = Number(c.req.param('groupId'))
   const { results } = await c.env.DB.prepare(
-    `SELECT id, group_id as groupId, name, created_at as createdAt FROM teams WHERE group_id = ? ORDER BY name`
+    `SELECT id, group_id as groupId, name, external_id as externalId, crest_url as crestUrl, created_at as createdAt FROM teams WHERE group_id = ? ORDER BY name`
   ).bind(groupId).all<Team>()
   return c.json(results)
 })
@@ -378,7 +378,7 @@ data.post('/games/:id/rollover', async (c) => {
 data.get('/sync', async (c) => {
   const [groups, teams, players] = await Promise.all([
     c.env.DB.prepare(`SELECT g.id, g.name, g.created_at as createdAt, COUNT(t.id) as teamCount FROM groups g LEFT JOIN teams t ON t.group_id = g.id GROUP BY g.id ORDER BY g.created_at`).all<Group>(),
-    c.env.DB.prepare(`SELECT id, group_id as groupId, name, created_at as createdAt FROM teams ORDER BY name`).all<Team>(),
+    c.env.DB.prepare(`SELECT id, group_id as groupId, name, external_id as externalId, crest_url as crestUrl, created_at as createdAt FROM teams ORDER BY name`).all<Team>(),
     c.env.DB.prepare(`SELECT id, name, created_at as createdAt FROM players ORDER BY name`).all<Player>(),
   ])
 

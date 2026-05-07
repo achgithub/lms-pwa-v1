@@ -17,6 +17,8 @@ export interface Team {
   id: number;
   groupId: number;
   name: string;
+  externalId?: number;
+  crestUrl?: string;
   createdAt: string;
 }
 

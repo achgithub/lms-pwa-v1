@@ -211,7 +211,18 @@ export default function SetupTab() {
                       <div style={{ paddingLeft: 16, marginTop: 6 }}>
                         {teams.map(t => (
                           <div key={t.id} className="list-item">
-                            <span className="text-muted">{t.name}</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              {t.crestUrl && (
+                                <img
+                                  src={t.crestUrl}
+                                  alt=""
+                                  width={22}
+                                  height={22}
+                                  style={{ objectFit: 'contain', flexShrink: 0 }}
+                                />
+                              )}
+                              <span className="text-muted">{t.name}</span>
+                            </span>
                             {isAdmin && <button className="btn-icon btn-sm" onClick={() => handleDeleteTeam(t.id, group.id)} title="Delete team">✕</button>}
                           </div>
                         ))}
