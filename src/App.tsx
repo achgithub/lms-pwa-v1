@@ -7,12 +7,12 @@ import SetupTab from './components/SetupTab';
 import GamesListTab from './components/GamesListTab';
 import GameDetailTab from './components/GameDetailTab';
 import ReportsTab from './components/ReportsTab';
-import ToolsTab from './components/ToolsTab';
 import { useOnlineSync } from './hooks/useOnlineSync';
 import { usePushSubscription } from './hooks/usePushSubscription';
 import { api } from './api/client';
+import { exportData } from './db';
 
-type Tab = 'setup' | 'games' | 'game-detail' | 'reports' | 'tools';
+type Tab = 'setup' | 'games' | 'game-detail' | 'reports';
 
 function initials(name: string): string {
   return name.split(' ').map(w => w[0] ?? '').join('').toUpperCase().slice(0, 2);
@@ -39,6 +39,8 @@ function useUpdateAvailable() {
 
 function SettingsPanel({ onClose }: { onClose: () => void }) {
   const { supported, permission, subscribed, busy, enable, disable } = usePushSubscription();
+  const [exporting, setExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState('');
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -56,6 +58,36 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
     };
   }, [onClose]);
 
+  async function handleExport() {
+    setExporting(true);
+    setExportMsg('');
+    try {
+      const data = await exportData();
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const filename = `lms-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      const file = new File([blob], filename, { type: 'application/json' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'LMS Backup' });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        setExportMsg(`Saved: ${filename}`);
+      }
+    } catch (e) {
+      if (e instanceof Error && e.name !== 'AbortError') setExportMsg('Export failed');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const divider = { borderTop: '1px solid var(--border-default)', marginTop: 12, paddingTop: 12 };
+  const sectionLabel = { fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' as const, letterSpacing: '0.07em', marginBottom: 8 };
+
   return (
     <div ref={ref} style={{
       position: 'absolute',
@@ -69,17 +101,14 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
       zIndex: 100,
       boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
     }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>
-        Notifications
-      </div>
+      {/* Notifications */}
+      <div style={sectionLabel}>Notifications</div>
       {!supported ? (
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
-          Install the app to your home screen to enable push notifications.
+          Install to home screen to enable push notifications.
         </p>
       ) : permission === 'denied' ? (
-        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
-          Blocked in browser settings.
-        </p>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>Blocked in browser settings.</p>
       ) : subscribed ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <span style={{ fontSize: 13 }}>Notifications enabled</span>
@@ -95,6 +124,19 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       )}
+
+      {/* Export */}
+      <div style={divider}>
+        <div style={sectionLabel}>Backup</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span style={{ fontSize: 13, color: exportMsg ? 'var(--emerald)' : 'var(--text-secondary)' }}>
+            {exportMsg || 'Export data as JSON'}
+          </span>
+          <button className="btn btn-ghost btn-sm" onClick={handleExport} disabled={exporting}>
+            {exporting ? <span className="spinner" /> : 'Export'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -129,7 +171,6 @@ function MainApp() {
     { id: 'games',   label: 'Games',   icon: 'ti ti-layout-grid' },
     { id: 'reports', label: 'Reports', icon: 'ti ti-chart-bar',  managerOnly: true },
     { id: 'setup',   label: 'Setup',   icon: 'ti ti-settings',   managerOnly: true },
-    { id: 'tools',   label: 'Tools',   icon: 'ti ti-tool',       managerOnly: true },
   ];
   const visibleNavItems = navItems.filter(item => !item.managerOnly || managerMode);
 
@@ -201,7 +242,6 @@ function MainApp() {
             <GameDetailTab gameId={selectedGameId} onBack={backToGames} />
           )}
           {activeTab === 'reports'     && <ReportsTab />}
-          {activeTab === 'tools'       && <ToolsTab />}
         </main>
 
         {/* Bottom navigation */}
