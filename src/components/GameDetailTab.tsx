@@ -654,6 +654,20 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
           )}
 
           {/* ── Results Phase ── */}
+          {resultsPhase && actingAsPlayer && (
+            <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div className="card-icon card-icon--live">
+                <i className="ti ti-clock" aria-hidden="true" />
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Awaiting results</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                  Round {game.currentRound} results will appear once the manager closes the round.
+                </div>
+              </div>
+            </div>
+          )}
+
           {resultsPhase && !actingAsPlayer && !pendingAutoAssignments && !massEliminationState && (
             <div className="card">
               <div className="section-header">
