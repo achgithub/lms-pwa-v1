@@ -10,7 +10,7 @@ module.exports = {
       fontFamily: {
         sans: ['Inter', 'Atkinson Hyperlegible', 'system-ui', 'sans-serif'],
       },
-      maxWidth: { app: '430px' },
+      maxWidth: { app: '600px' },
     },
   },
   plugins: [],

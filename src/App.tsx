@@ -140,7 +140,7 @@ function MainApp() {
       <div className="blob blob-emerald" aria-hidden="true" />
 
       {/* Content wrapper */}
-      <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: '430px', margin: '0 auto', minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: '600px', margin: '0 auto', minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
 
         {/* Top bar */}
         <header style={{ padding: 'calc(env(safe-area-inset-top) + 14px) 18px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
