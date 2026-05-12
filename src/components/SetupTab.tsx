@@ -21,6 +21,10 @@ export default function SetupTab() {
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
   const [appUsers, setAppUsers] = useState<AppUser[]>([]);
   const [error, setError] = useState('');
+  const [resetUserId, setResetUserId] = useState<number | null>(null);
+  const [resetPasscode, setResetPasscode] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState('');
 
   // New entry state
   const [newPlayerName, setNewPlayerName] = useState('');
@@ -125,6 +129,23 @@ export default function SetupTab() {
     }
   }
 
+  async function handleResetPasscode(userId: number) {
+    if (resetPasscode.trim().length < 4) { setError('Passcode must be at least 4 characters'); return; }
+    setResetBusy(true);
+    setError('');
+    try {
+      await api.post('/auth/reset-passcode', { userId, passcode: resetPasscode.trim() });
+      setResetUserId(null);
+      setResetPasscode('');
+      setResetSuccess(`Passcode updated`);
+      setTimeout(() => setResetSuccess(''), 3000);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setResetBusy(false);
+    }
+  }
+
   // ── Teams ──────────────────────────────────────────────────────────────
 
   async function handleAddTeam(e: React.FormEvent, groupId: number) {
@@ -164,6 +185,7 @@ export default function SetupTab() {
       {isAdmin && (
         <div className="card" style={{ marginBottom: 16 }}>
           <h2 className="card-title">Users</h2>
+          {resetSuccess && <div className="alert alert-success" style={{ marginBottom: 12 }}>{resetSuccess}</div>}
           {appUsers.length === 0 ? (
             <p className="empty-state">No users yet.</p>
           ) : (
@@ -177,16 +199,57 @@ export default function SetupTab() {
                       {role === 'manager' ? 'Managers' : 'Players'}
                     </div>
                     {group.map(u => (
-                      <div key={u.id} className="list-item">
-                        <span>{u.name}</span>
-                        {u.role === 'manager' && (
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            onClick={() => handleDemote(u.id, u.name)}
-                            title="Demote to Player"
-                          >
-                            Demote to Player
-                          </button>
+                      <div key={u.id}>
+                        <div className="list-item">
+                          <span>{u.name}</span>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            {u.role === 'manager' && (
+                              <button
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => handleDemote(u.id, u.name)}
+                              >
+                                Demote
+                              </button>
+                            )}
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => {
+                                setResetUserId(resetUserId === u.id ? null : u.id);
+                                setResetPasscode('');
+                                setError('');
+                              }}
+                            >
+                              Reset passcode
+                            </button>
+                          </div>
+                        </div>
+                        {resetUserId === u.id && (
+                          <div style={{ padding: '8px 12px 12px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                            <div className="form-group" style={{ flex: 1 }}>
+                              <label>New passcode for {u.name}</label>
+                              <input
+                                type="password"
+                                placeholder="Min. 4 characters"
+                                value={resetPasscode}
+                                onChange={e => setResetPasscode(e.target.value)}
+                                autoFocus
+                              />
+                            </div>
+                            <button
+                              className="btn btn-primary btn-sm"
+                              onClick={() => handleResetPasscode(u.id)}
+                              disabled={resetBusy || resetPasscode.trim().length < 4}
+                            >
+                              {resetBusy ? <span className="spinner" /> : 'Save'}
+                            </button>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => { setResetUserId(null); setResetPasscode(''); }}
+                              disabled={resetBusy}
+                            >
+                              Cancel
+                            </button>
+                          </div>
                         )}
                       </div>
                     ))}

@@ -96,11 +96,8 @@ auth.post('/register', async (c) => {
   if (invite.used_at)       return c.json({ error: 'This invite has already been used' }, 400)
   if (new Date(invite.expires_at) < new Date()) return c.json({ error: 'Invite link has expired' }, 400)
 
-  const takenUser   = await c.env.DB.prepare('SELECT id FROM users   WHERE name = ? COLLATE NOCASE').bind(body.name.trim()).first()
+  const takenUser = await c.env.DB.prepare('SELECT id FROM users WHERE name = ? COLLATE NOCASE').bind(body.name.trim()).first()
   if (takenUser) return c.json({ error: 'That name is already taken' }, 409)
-
-  const takenPlayer = await c.env.DB.prepare('SELECT id FROM players WHERE name = ? COLLATE NOCASE').bind(body.name.trim()).first()
-  if (takenPlayer) return c.json({ error: 'That name is already taken' }, 409)
 
   const salt = randomHex()
   const hash = await hashPasscode(body.passcode, salt)
@@ -119,6 +116,25 @@ auth.post('/register', async (c) => {
 
   const token = await signJWT({ sub: user!.id, name: user!.name, role: user!.role, exp: jwtExp() }, c.env.JWT_SECRET)
   return c.json({ token, user })
+})
+
+// POST /auth/reset-passcode — admin resets any user's passcode
+auth.post('/reset-passcode', authMiddleware, async (c) => {
+  if (c.get('userRole') !== 'admin') return c.json({ error: 'Forbidden' }, 403)
+
+  const body = await c.req.json<{ userId: number; passcode: string }>()
+  if (!body.userId || !body.passcode?.trim()) return c.json({ error: 'userId and passcode required' }, 400)
+  if (body.passcode.trim().length < 4) return c.json({ error: 'Passcode must be at least 4 characters' }, 400)
+
+  const salt = randomHex()
+  const hash = await hashPasscode(body.passcode.trim(), salt)
+
+  const result = await c.env.DB.prepare(
+    `UPDATE users SET passcode_hash = ?, passcode_salt = ? WHERE id = ?`
+  ).bind(hash, salt, body.userId).run()
+
+  if (result.meta.changes === 0) return c.json({ error: 'User not found' }, 404)
+  return c.json({ ok: true })
 })
 
 // GET /auth/me
