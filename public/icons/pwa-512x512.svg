@@ -1,6 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="80" fill="#1a1a2e"/>
-  <circle cx="256" cy="230" r="116" fill="none" stroke="#e94560" stroke-width="14"/>
-  <polygon points="256,128 293,204 376,216 314,276 330,358 256,318 182,358 198,276 136,216 219,204" fill="#e94560" opacity="0.9"/>
-  <text x="256" y="430" font-family="system-ui,sans-serif" font-size="58" font-weight="700" text-anchor="middle" fill="#e94560">LMS</text>
+  <rect width="512" height="512" rx="86" fill="#141414"/>
+  <circle cx="54" cy="54" r="186" fill="rgba(129,140,248,0.22)"/>
+  <circle cx="458" cy="458" r="147" fill="rgba(52,211,153,0.16)"/>
+  <text x="256" y="294" font-family="'Inter',system-ui,sans-serif" font-size="170"
+        font-weight="800" text-anchor="middle" fill="#ffffff" letter-spacing="-5">LMS</text>
+  <rect x="150" y="326" width="212" height="16" rx="8" fill="#818cf8"/>
 </svg>

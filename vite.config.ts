@@ -15,8 +15,8 @@ export default defineConfig({
         name: 'Last Man Standing',
         short_name: 'LMS',
         description: 'Last Man Standing football competition manager',
-        theme_color: '#1a1a2e',
-        background_color: '#1a1a2e',
+        theme_color: '#818cf8',
+        background_color: '#141414',
         display: 'standalone',
         start_url: '/',
         icons: [
@@ -30,6 +30,11 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/svg+xml',
             purpose: 'any maskable',
+          },
+          {
+            src: 'icons/apple-touch-icon.svg',
+            sizes: '180x180',
+            type: 'image/svg+xml',
           },
         ],
       },

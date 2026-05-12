@@ -27,8 +27,9 @@ export default function LoginPage() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="app-logo" style={{ fontSize: '2rem', marginBottom: 8 }}>LMS</div>
-        <h1 style={{ fontSize: '1.2rem', marginBottom: 24 }}>Last Man Standing</h1>
+        <div className="app-logo" style={{ fontSize: '2rem', marginBottom: 24 }}>
+          Last<span style={{ color: 'var(--indigo)' }}>Man</span>
+        </div>
 
         {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
 

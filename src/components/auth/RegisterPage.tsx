@@ -38,10 +38,11 @@ export default function RegisterPage({ token }: Props) {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="app-logo" style={{ fontSize: '2rem', marginBottom: 8 }}>LMS</div>
-        <h1 style={{ fontSize: '1.2rem', marginBottom: 4 }}>You've been invited!</h1>
-        <p className="text-muted" style={{ marginBottom: 24, fontSize: 13 }}>
-          Set your name and passcode to join.
+        <div className="app-logo" style={{ fontSize: '2rem', marginBottom: 16 }}>
+          Last<span style={{ color: 'var(--indigo)' }}>Man</span>
+        </div>
+        <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24 }}>
+          You've been invited — set your name and passcode to join.
         </p>
 
         {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}

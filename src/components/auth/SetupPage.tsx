@@ -30,9 +30,10 @@ export default function SetupPage() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="app-logo" style={{ fontSize: '2rem', marginBottom: 8 }}>LMS</div>
-        <h1 style={{ fontSize: '1.2rem', marginBottom: 4 }}>Admin Setup</h1>
-        <p className="text-muted" style={{ marginBottom: 24, fontSize: 13 }}>
+        <div className="app-logo" style={{ fontSize: '2rem', marginBottom: 16 }}>
+          Last<span style={{ color: 'var(--indigo)' }}>Man</span>
+        </div>
+        <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24 }}>
           First run — create your admin account.
         </p>
 

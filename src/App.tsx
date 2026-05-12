@@ -14,92 +14,91 @@ import { api } from './api/client';
 
 type Tab = 'setup' | 'games' | 'game-detail' | 'reports' | 'tools';
 
+function initials(name: string): string {
+  return name.split(' ').map(w => w[0] ?? '').join('').toUpperCase().slice(0, 2);
+}
+
 function useUpdateAvailable() {
-  const [updateAvailable, setUpdateAvailable] = useState(false)
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   useEffect(() => {
-    if (!('serviceWorker' in navigator)) return
+    if (!('serviceWorker' in navigator)) return;
     navigator.serviceWorker.ready.then(reg => {
       reg.addEventListener('updatefound', () => {
-        const newWorker = reg.installing
-        if (!newWorker) return
+        const newWorker = reg.installing;
+        if (!newWorker) return;
         newWorker.addEventListener('statechange', () => {
           if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            setUpdateAvailable(true)
+            setUpdateAvailable(true);
           }
-        })
-      })
-    })
-  }, [])
-  return updateAvailable
+        });
+      });
+    });
+  }, []);
+  return updateAvailable;
 }
 
 function SettingsPanel({ onClose }: { onClose: () => void }) {
-  const { supported, permission, subscribed, busy, enable, disable } = usePushSubscription()
-  const ref = useRef<HTMLDivElement>(null)
+  const { supported, permission, subscribed, busy, enable, disable } = usePushSubscription();
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') onClose();
     }
-    document.addEventListener('mousedown', handleClick)
-    document.addEventListener('keydown', handleKey)
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
     return () => {
-      document.removeEventListener('mousedown', handleClick)
-      document.removeEventListener('keydown', handleKey)
-    }
-  }, [onClose])
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [onClose]);
 
   return (
     <div ref={ref} style={{
       position: 'absolute',
       top: 'calc(100% + 8px)',
       right: 0,
-      background: 'var(--surface)',
-      border: '1px solid var(--border)',
-      borderRadius: 'var(--radius)',
+      background: '#1c1c1c',
+      border: '1px solid var(--border-default)',
+      borderRadius: 'var(--radius-md)',
       padding: '16px',
       minWidth: 260,
       zIndex: 100,
-      boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+      boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
     }}>
-      <div style={{ fontWeight: 600, marginBottom: 12, fontSize: 14 }}>Settings</div>
-
-      <div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-          Notifications
-        </div>
-        {!supported ? (
-          <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
-            Not available — install the app to your home screen to enable push notifications.
-          </p>
-        ) : permission === 'denied' ? (
-          <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
-            Blocked in browser settings.
-          </p>
-        ) : subscribed ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <span style={{ fontSize: 13 }}>Notifications enabled</span>
-            <button className="btn btn-ghost btn-sm" onClick={disable} disabled={busy}>
-              {busy ? <span className="spinner" /> : 'Turn off'}
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <span className="text-muted" style={{ fontSize: 13 }}>Enable notifications</span>
-            <button className="btn btn-primary btn-sm" onClick={enable} disabled={busy}>
-              {busy ? <span className="spinner" /> : 'Enable'}
-            </button>
-          </div>
-        )}
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>
+        Notifications
       </div>
+      {!supported ? (
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
+          Install the app to your home screen to enable push notifications.
+        </p>
+      ) : permission === 'denied' ? (
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
+          Blocked in browser settings.
+        </p>
+      ) : subscribed ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span style={{ fontSize: 13 }}>Notifications enabled</span>
+          <button className="btn btn-ghost btn-sm" onClick={disable} disabled={busy}>
+            {busy ? <span className="spinner" /> : 'Turn off'}
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Enable notifications</span>
+          <button className="btn btn-primary btn-sm" onClick={enable} disabled={busy}>
+            {busy ? <span className="spinner" /> : 'Enable'}
+          </button>
+        </div>
+      )}
     </div>
-  )
+  );
 }
 
-// Only rendered when the user is authenticated — safe to sync
 function MainApp() {
   const { user, isManager, isPlayer, viewMode, setViewMode, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('games');
@@ -107,6 +106,8 @@ function MainApp() {
   const [showSettings, setShowSettings] = useState(false);
   const isOnline = useOnlineSync();
   const updateAvailable = useUpdateAvailable();
+
+  const managerMode = isManager && viewMode !== 'player';
 
   function openGame(id: number) {
     setSelectedGameId(id);
@@ -124,79 +125,106 @@ function MainApp() {
     setActiveTab('games');
   }
 
-  const allTabs: { id: Tab; label: string; managerOnly?: boolean }[] = [
-    { id: 'setup',   label: 'Setup',   managerOnly: true },
-    { id: 'games',   label: 'Games' },
-    { id: 'reports', label: 'Reports', managerOnly: true },
-    { id: 'tools',   label: 'Tools',   managerOnly: true },
+  const navItems: { id: Tab; label: string; icon: string; managerOnly?: boolean }[] = [
+    { id: 'games',   label: 'Games',   icon: 'ti ti-layout-grid' },
+    { id: 'reports', label: 'Reports', icon: 'ti ti-chart-bar',  managerOnly: true },
+    { id: 'setup',   label: 'Setup',   icon: 'ti ti-settings',   managerOnly: true },
+    { id: 'tools',   label: 'Tools',   icon: 'ti ti-tool',       managerOnly: true },
   ];
-  const tabs = allTabs.filter(t => !t.managerOnly || (isManager && viewMode !== 'player'));
+  const visibleNavItems = navItems.filter(item => !item.managerOnly || managerMode);
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <span className="app-logo">LMS</span>
-        <span className="app-title">Last Man Standing</span>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
-          {!isOnline && <span className="offline-badge">Offline</span>}
-          {isManager && !isPlayer && (
-            <button className="btn btn-ghost btn-sm" onClick={toggleViewMode}>
-              {viewMode === 'player' ? '← Manager View' : 'Player View'}
-            </button>
-          )}
-          <span className="text-muted" style={{ fontSize: 13 }}>{user!.name}</span>
-          <div style={{ position: 'relative' }}>
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() => setShowSettings(s => !s)}
-              aria-label="Settings"
-              style={{ padding: '4px 8px', fontSize: 16, lineHeight: 1 }}
-            >
-              ⚙
-            </button>
-            {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+    <div style={{ background: 'var(--bg-base)', minHeight: '100dvh', position: 'relative' }}>
+      {/* Decorative blobs */}
+      <div className="blob blob-indigo" aria-hidden="true" />
+      <div className="blob blob-emerald" aria-hidden="true" />
+
+      {/* Content wrapper */}
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: 430, margin: '0 auto', minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
+
+        {/* Top bar */}
+        <header style={{ padding: '14px 18px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <span className="app-logo">
+            Last<span style={{ color: 'var(--indigo)' }}>Man</span>
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {isManager && !isPlayer && (
+              <button className="ghost-pill" onClick={toggleViewMode}>
+                {viewMode === 'player' ? '← Manager' : 'Player View'}
+              </button>
+            )}
+            <button className="ghost-pill" onClick={logout}>Sign out</button>
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowSettings(s => !s)}
+                aria-label="Settings"
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.09)',
+                  border: '1px solid rgba(255,255,255,0.13)',
+                  color: '#fff',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  fontFamily: 'inherit',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {initials(user!.name)}
+              </button>
+              {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+            </div>
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={logout}>Sign out</button>
-        </div>
-      </header>
+        </header>
 
-      {!isPlayer && (
-        <nav className="app-nav">
-          {tabs.map(t => (
-            <button
-              key={t.id}
-              className={`nav-tab ${activeTab === t.id ? 'active' : ''}`}
-              onClick={() => { setActiveTab(t.id); setSelectedGameId(null); }}
-            >
-              {t.label}
-            </button>
-          ))}
-          {activeTab === 'game-detail' && (
-            <button className="nav-tab active">Game Detail</button>
-          )}
-        </nav>
-      )}
-
-      {updateAvailable && (
-        <div className="offline-banner" style={{ background: 'var(--accent)', color: '#000' }}>
-          New version available — close all app tabs and reopen to update
-        </div>
-      )}
-      {!isOnline && (
-        <div className="offline-banner">
-          No connection — viewing saved data, changes disabled
-        </div>
-      )}
-
-      <main className="app-content">
-        {activeTab === 'setup'       && <SetupTab />}
-        {activeTab === 'games'       && <GamesListTab onSelectGame={openGame} />}
-        {activeTab === 'game-detail' && selectedGameId !== null && (
-          <GameDetailTab gameId={selectedGameId} onBack={backToGames} />
+        {/* Banners */}
+        {updateAvailable && (
+          <div className="offline-banner" style={{ background: 'var(--indigo-dim)', borderColor: 'var(--indigo-border)', color: 'var(--indigo)' }}>
+            New version available — close all app tabs and reopen to update
+          </div>
         )}
-        {activeTab === 'reports'     && <ReportsTab />}
-        {activeTab === 'tools'       && <ToolsTab />}
-      </main>
+        {!isOnline && (
+          <div className="offline-banner">
+            No connection — viewing saved data, changes disabled
+          </div>
+        )}
+
+        {/* Page content */}
+        <main className="app-content" style={{ flex: 1, padding: '16px 18px 80px' }}>
+          {activeTab === 'setup'       && <SetupTab />}
+          {activeTab === 'games'       && <GamesListTab onSelectGame={openGame} />}
+          {activeTab === 'game-detail' && selectedGameId !== null && (
+            <GameDetailTab gameId={selectedGameId} onBack={backToGames} />
+          )}
+          {activeTab === 'reports'     && <ReportsTab />}
+          {activeTab === 'tools'       && <ToolsTab />}
+        </main>
+
+        {/* Bottom navigation */}
+        <nav className="bottom-nav" role="navigation" aria-label="Main navigation">
+          {visibleNavItems.map(item => {
+            const isActive = activeTab === item.id || (item.id === 'games' && activeTab === 'game-detail');
+            return (
+              <button
+                key={item.id}
+                className={`nav-item${isActive ? ' nav-item--active' : ''}`}
+                aria-current={isActive ? 'page' : undefined}
+                onClick={() => {
+                  setActiveTab(item.id);
+                  if (item.id !== 'games') setSelectedGameId(null);
+                }}
+              >
+                <i className={item.icon} aria-hidden="true" />
+                {item.label}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
     </div>
   );
 }
@@ -218,8 +246,6 @@ function Shell() {
   if (inviteToken)         return <RegisterPage token={inviteToken} />;
   if (needsSetup)          return <SetupPage />;
   return <LoginPage />;
-
-  return <MainApp />;
 }
 
 export default function App() {

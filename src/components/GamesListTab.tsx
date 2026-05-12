@@ -7,6 +7,40 @@ interface Props {
   onSelectGame: (id: number) => void;
 }
 
+function GameCard({ game, onSelect, index }: { game: Game; onSelect: () => void; index: number }) {
+  const isActive = game.status === 'active';
+  return (
+    <div
+      className={`card${!isActive ? ' row--eliminated' : ''}`}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        cursor: 'pointer',
+        marginBottom: 8,
+        animationDelay: `${index * 50}ms`,
+      }}
+      onClick={onSelect}
+    >
+      <div className={`card-icon card-icon--${isActive ? 'live' : 'done'}`}>
+        <i className={`ti ti-${isActive ? 'flame' : 'check'}`} aria-hidden="true" />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{game.name}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+          {game.groupName} · Round {game.currentRound}
+          {game.winnerName ? ` · Winner: ${game.winnerName}` : ''}
+        </div>
+      </div>
+      <span className={`badge badge-${isActive ? 'active' : 'completed'}`}>
+        <i className={`ti ti-${isActive ? 'check' : 'star'}`} aria-hidden="true" />
+        <span className="sr-only">Status: </span>
+        {game.status}
+      </span>
+    </div>
+  );
+}
+
 export default function GamesListTab({ onSelectGame }: Props) {
   const { actingAsPlayer } = useAuth();
   const [games, setGames] = useState<Game[]>([]);
@@ -97,7 +131,7 @@ export default function GamesListTab({ onSelectGame }: Props) {
 
   if (loading) return <div className="empty-state"><span className="spinner" /></div>;
 
-  // Player view — simple game picker (auto-redirect handled by useEffect for 1 game)
+  // Player view
   if (actingAsPlayer) {
     return (
       <div>
@@ -106,26 +140,11 @@ export default function GamesListTab({ onSelectGame }: Props) {
           <h2 className="section-title">Your Games</h2>
         </div>
         {games.length === 0 ? (
-          <div className="card">
-            <p className="empty-state">You haven't been added to any games yet.</p>
-          </div>
+          <div className="empty-state">You haven't been added to any games yet.</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {games.map(game => (
-              <div key={game.id} className="card" style={{ cursor: 'pointer' }} onClick={() => onSelectGame(game.id)}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 16 }}>{game.name}</div>
-                    <div className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>{game.groupName} · Round {game.currentRound}</div>
-                  </div>
-                  <span className={`badge badge-${game.status}`}>{game.status}</span>
-                </div>
-                {game.winnerName && (
-                  <div style={{ marginTop: 8, fontSize: 13, color: 'var(--warning)' }}>
-                    Winner: {game.winnerName}
-                  </div>
-                )}
-              </div>
+          <div>
+            {games.map((game, i) => (
+              <GameCard key={game.id} game={game} onSelect={() => onSelectGame(game.id)} index={i} />
             ))}
           </div>
         )}
@@ -139,13 +158,13 @@ export default function GamesListTab({ onSelectGame }: Props) {
 
       <div className="section-header">
         <h2 className="section-title">Games</h2>
-        <button className="btn btn-primary" onClick={() => setShowForm(f => !f)}>
+        <button className="btn btn-primary btn-sm" onClick={() => setShowForm(f => !f)}>
           {showForm ? 'Cancel' : '+ New Game'}
         </button>
       </div>
 
       {showForm && (
-        <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card" style={{ marginBottom: 12 }}>
           <h3 className="card-title">Create New Game</h3>
           <form onSubmit={handleCreate}>
             <div className="form-row">
@@ -176,25 +195,25 @@ export default function GamesListTab({ onSelectGame }: Props) {
 
             <div className="mt-16">
               <div className="section-header">
-                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                   Players ({formSelectedPlayers.size} selected)
-                </label>
+                </span>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={toggleAll}>
                   {formSelectedPlayers.size === players.length ? 'Deselect All' : 'Select All'}
                 </button>
               </div>
 
               {players.length === 0 ? (
-                <p className="text-muted">No players in pool. Add players in Setup first.</p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>No players in pool. Add players in Setup first.</p>
               ) : (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
                   {players.map(p => (
                     <label key={p.id} className="checkbox-row" style={{
                       padding: '6px 12px',
                       border: '1px solid',
-                      borderColor: formSelectedPlayers.has(p.name) ? 'var(--accent)' : 'var(--border)',
-                      borderRadius: 'var(--radius)',
-                      background: formSelectedPlayers.has(p.name) ? 'rgba(233,69,96,0.1)' : 'transparent',
+                      borderColor: formSelectedPlayers.has(p.name) ? 'var(--indigo)' : 'var(--border-default)',
+                      borderRadius: 'var(--radius-sm)',
+                      background: formSelectedPlayers.has(p.name) ? 'var(--indigo-dim)' : 'transparent',
                       cursor: 'pointer',
                       userSelect: 'none',
                     }}>
@@ -236,43 +255,12 @@ export default function GamesListTab({ onSelectGame }: Props) {
       )}
 
       {games.length === 0 ? (
-        <div className="card">
-          <p className="empty-state">No games yet. Create one to get started.</p>
-        </div>
+        <div className="empty-state">No games yet. Create one to get started.</div>
       ) : (
-        <div className="card">
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Group</th>
-                  <th>Players</th>
-                  <th>Round</th>
-                  <th>Status</th>
-                  <th>Winner</th>
-                </tr>
-              </thead>
-              <tbody>
-                {games.map(game => (
-                  <tr
-                    key={game.id}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => onSelectGame(game.id)}
-                  >
-                    <td style={{ fontWeight: 600 }}>{game.name}</td>
-                    <td className="text-muted">{game.groupName}</td>
-                    <td>{game.participantCount}</td>
-                    <td>{game.currentRound}</td>
-                    <td>
-                      <span className={`badge badge-${game.status}`}>{game.status}</span>
-                    </td>
-                    <td className="text-muted">{game.winnerName ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div>
+          {games.map((game, i) => (
+            <GameCard key={game.id} game={game} onSelect={() => onSelectGame(game.id)} index={i} />
+          ))}
         </div>
       )}
     </div>

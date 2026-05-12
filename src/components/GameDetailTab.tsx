@@ -166,7 +166,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
       const updated = await db.setRoundFixtures(openRound.id, selectedFixtureIds);
       setRounds(prev => prev.map(r => r.id === updated.id ? updated : r));
       setRoundFixtures(allFixtures.filter(f => selectedFixtureIds.includes(f.id)));
-      document.querySelector<HTMLElement>('.app-content')?.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
       setError(String(e));
     } finally {

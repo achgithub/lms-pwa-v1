@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <rect width="180" height="180" fill="#141414"/>
+  <circle cx="18" cy="18" r="65" fill="rgba(129,140,248,0.22)"/>
+  <circle cx="162" cy="162" r="52" fill="rgba(52,211,153,0.16)"/>
+  <text x="90" y="103" font-family="'Inter',system-ui,sans-serif" font-size="60"
+        font-weight="800" text-anchor="middle" fill="#ffffff" letter-spacing="-2">LMS</text>
+  <rect x="52" y="115" width="76" height="6" rx="3" fill="#818cf8"/>
+</svg>
