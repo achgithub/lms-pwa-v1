@@ -52,10 +52,6 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
   const [pendingFixtureOutcomes, setPendingFixtureOutcomes] = useState<Record<number, FixtureOutcome>>({});
   const [pendingTeamResults, setPendingTeamResults] = useState<Record<string, PickResult>>({});
 
-  // Add participant
-  const [newParticipant, setNewParticipant] = useState('');
-  const [addingPlayer, setAddingPlayer] = useState(false);
-
   const [busy, setBusy] = useState(false);
   const [notifyBusy, setNotifyBusy] = useState(false);
   const [notifyStatus, setNotifyStatus] = useState('');
@@ -225,6 +221,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
     const teamsForAssign = matchdayTeamNames.size > 0 ? teams.filter(t => matchdayTeamNames.has(t.name)) : teams;
     const assignments = logic.autoAssignTeams(playersWithoutPicks, teamsForAssign, latestRoundPicks, rounds, standings);
     setPendingAutoAssignments(assignments.length > 0 ? assignments : []);
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 50);
   }
 
   async function confirmFinalisePicks(autoAssignments: AutoAssignment[]) {
@@ -246,6 +243,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
         setPicks(prev => [...prev.filter(p => p.id !== saved.id), saved]);
       }
       await load(); // reload → allActiveHavePick becomes true → results phase shows
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
       setError(String(e));
     } finally {
@@ -432,25 +430,6 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
     }
   }
 
-  // ── Add participant ──────────────────────────────────────────────────────
-
-  async function handleAddParticipant(e: React.FormEvent) {
-    e.preventDefault();
-    const name = newParticipant.trim();
-    if (!name) return;
-    setAddingPlayer(true);
-    try {
-      const p = await db.addParticipant(gameId, name);
-      setParticipants(prev => [...prev, p]);
-      if (game) setGame({ ...game, participantCount: game.participantCount + 1 });
-      setNewParticipant('');
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setAddingPlayer(false);
-    }
-  }
-
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -458,25 +437,25 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
       {error && <div className="alert alert-error">{error} <button style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }} onClick={() => setError('')}>✕</button></div>}
 
       {/* Header */}
-      <div className="section-header">
-        <div>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 14 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <button className="btn btn-ghost btn-sm" onClick={onBack} style={{ marginBottom: 8 }}>
-            ← Back to Games
+            ← Back
           </button>
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 700 }}>{game.name}</h2>
-          <div style={{ display: 'flex', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
-            <span className="text-muted">{game.groupName}</span>
+          <h2 style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{game.name}</h2>
+          <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{game.groupName}</span>
             <span className={`badge badge-${game.status}`}>{game.status}</span>
             {game.status === 'active' && (
               <span className="badge badge-open">Round {game.currentRound}</span>
             )}
             {game.winnerName && (
-              <span style={{ color: 'var(--warning)', fontWeight: 600 }}>Winner: {game.winnerName}</span>
+              <span style={{ color: 'var(--amber)', fontWeight: 600, fontSize: 13 }}>Winner: {game.winnerName}</span>
             )}
           </div>
         </div>
         {!actingAsPlayer && (
-          <button className="btn btn-danger btn-sm" onClick={handleDelete} disabled={busy}>
+          <button className="btn btn-danger btn-sm" onClick={handleDelete} disabled={busy} style={{ flexShrink: 0 }}>
             Delete
           </button>
         )}
@@ -525,10 +504,10 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                                 e.target.checked ? [...prev, f.id] : prev.filter(id => id !== f.id)
                               )}
                             />
-                            <span style={{ fontSize: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: 12 }}>{dateStr} {timeStr}</span>
-                              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>GW{f.matchday}</span>
-                              <span>{f.homeTeamName} vs {f.awayTeamName}</span>
+                            <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)' }}>{dateStr} {timeStr}</span>
+                              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>GW{f.matchday}</span>
+                              <span style={{ fontSize: 13, fontWeight: 500 }}>{f.homeTeamName} vs {f.awayTeamName}</span>
                             </span>
                           </label>
                         );
@@ -557,12 +536,12 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                   Round {game.currentRound} — Assign Picks
                   {openRound.fixtureIds?.length ? <span className="text-muted" style={{ fontWeight: 400, marginLeft: 8 }}>{openRound.fixtureIds.length} fixtures</span> : null}
                 </h3>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn btn-primary" onClick={saveAllPicks} disabled={busy}>
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  <button className="btn btn-primary btn-sm" onClick={saveAllPicks} disabled={busy}>
                     {busy ? <><span className="spinner" /> Saving…</> : actingAsPlayer ? 'Save Pick' : 'Save Picks'}
                   </button>
                   {!actingAsPlayer && (
-                    <button className="btn btn-success" onClick={handleFinalisePicks} disabled={busy}>
+                    <button className="btn btn-success btn-sm" onClick={handleFinalisePicks} disabled={busy}>
                       Finalise Picks
                     </button>
                   )}
@@ -678,11 +657,11 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                 </h3>
                 {!actingAsPlayer && (
                   <button
-                    className="btn btn-success"
+                    className="btn btn-success btn-sm"
                     onClick={handleCloseRound}
                     disabled={busy || fixturesWithPicks.some(f => pendingFixtureOutcomes[f.id] === undefined) || unpairedTeams.some(t => pendingTeamResults[t] === undefined)}
                   >
-                    {busy ? <><span className="spinner" /> Working…</> : 'Close Round & Advance'}
+                    {busy ? <><span className="spinner" /> Working…</> : 'Close Round'}
                   </button>
                 )}
               </div>
@@ -941,20 +920,6 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
       <div className="card mt-16">
         <div className="section-header">
           <h3 className="section-title">Participants ({participants.length})</h3>
-          {game.status === 'active' && !actingAsPlayer && (
-            <form onSubmit={handleAddParticipant} className="form-row" style={{ margin: 0 }}>
-              <input
-                type="text"
-                placeholder="Add player"
-                value={newParticipant}
-                onChange={e => setNewParticipant(e.target.value)}
-                style={{ width: 150 }}
-              />
-              <button type="submit" className="btn btn-secondary btn-sm" disabled={addingPlayer || !newParticipant.trim()}>
-                Add
-              </button>
-            </form>
-          )}
         </div>
 
         <div className="table-wrap">
