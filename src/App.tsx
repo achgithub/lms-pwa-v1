@@ -143,7 +143,7 @@ function MainApp() {
       <div style={{ position: 'relative', zIndex: 1, maxWidth: 430, margin: '0 auto', minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
 
         {/* Top bar */}
-        <header style={{ padding: '14px 18px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <header style={{ padding: 'calc(env(safe-area-inset-top) + 14px) 18px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <span className="app-logo">
             Last<span style={{ color: 'var(--indigo)' }}>Man</span>
           </span>
