@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Game, Participant, Round, Pick, Team, Fixture, Standing } from '../types';
 import type { PickResult } from '../types';
 import type { AutoAssignment } from '../gameLogic';
@@ -123,6 +123,13 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
+  const autoAssignRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (pendingAutoAssignments !== null && autoAssignRef.current) {
+      autoAssignRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [pendingAutoAssignments]);
+
   if (loading) return <div className="empty-state"><span className="spinner" /></div>;
   if (!game) return null;
 
@@ -221,7 +228,6 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
     const teamsForAssign = matchdayTeamNames.size > 0 ? teams.filter(t => matchdayTeamNames.has(t.name)) : teams;
     const assignments = logic.autoAssignTeams(playersWithoutPicks, teamsForAssign, latestRoundPicks, rounds, standings);
     setPendingAutoAssignments(assignments.length > 0 ? assignments : []);
-    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 50);
   }
 
   async function confirmFinalisePicks(autoAssignments: AutoAssignment[]) {
@@ -615,7 +621,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
 
           {/* ── Auto-assign confirmation ── */}
           {pendingAutoAssignments && (
-            <div className="card" style={{ border: '1px solid var(--accent)' }}>
+            <div ref={autoAssignRef} className="card" style={{ border: '1px solid var(--indigo-border)', background: 'var(--indigo-dim)' }}>
               <h3 className="card-title" style={{ marginBottom: 8 }}>Auto-assign picks</h3>
               <p className="text-muted" style={{ fontSize: 13, marginBottom: 12 }}>
                 The following players have no pick. These will be assigned before closing the round:
