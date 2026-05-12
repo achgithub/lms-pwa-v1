@@ -96,8 +96,11 @@ auth.post('/register', async (c) => {
   if (invite.used_at)       return c.json({ error: 'This invite has already been used' }, 400)
   if (new Date(invite.expires_at) < new Date()) return c.json({ error: 'Invite link has expired' }, 400)
 
-  const taken = await c.env.DB.prepare('SELECT id FROM users WHERE name = ? COLLATE NOCASE').bind(body.name.trim()).first()
-  if (taken) return c.json({ error: 'That name is already taken' }, 409)
+  const takenUser   = await c.env.DB.prepare('SELECT id FROM users   WHERE name = ? COLLATE NOCASE').bind(body.name.trim()).first()
+  if (takenUser) return c.json({ error: 'That name is already taken' }, 409)
+
+  const takenPlayer = await c.env.DB.prepare('SELECT id FROM players WHERE name = ? COLLATE NOCASE').bind(body.name.trim()).first()
+  if (takenPlayer) return c.json({ error: 'That name is already taken' }, 409)
 
   const salt = randomHex()
   const hash = await hashPasscode(body.passcode, salt)
@@ -109,6 +112,10 @@ auth.post('/register', async (c) => {
 
   await c.env.DB.prepare(`UPDATE invite_tokens SET used_at = ? WHERE id = ?`)
     .bind(new Date().toISOString(), invite.id).run()
+
+  // Auto-add to the player pool so they're immediately available for games
+  await c.env.DB.prepare(`INSERT OR IGNORE INTO players (name) VALUES (?)`)
+    .bind(body.name.trim()).run()
 
   const token = await signJWT({ sub: user!.id, name: user!.name, role: user!.role, exp: jwtExp() }, c.env.JWT_SECRET)
   return c.json({ token, user })

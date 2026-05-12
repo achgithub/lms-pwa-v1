@@ -240,6 +240,8 @@ data.get('/players', async (c) => {
 data.post('/players', requireRole('admin', 'manager'), async (c) => {
   const { name } = await c.req.json<{ name: string }>()
   if (!name?.trim()) return c.json({ error: 'name required' }, 400)
+  const taken = await c.env.DB.prepare('SELECT id FROM players WHERE name = ? COLLATE NOCASE').bind(name.trim()).first()
+  if (taken) return c.json({ error: `'${name.trim()}' is already in the player pool` }, 409)
   const row = await c.env.DB.prepare(
     `INSERT INTO players (name) VALUES (?) RETURNING id, name, created_at as createdAt`
   ).bind(name.trim()).first<Player>()
