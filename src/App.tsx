@@ -37,10 +37,18 @@ function useUpdateAvailable() {
   return updateAvailable;
 }
 
-function SettingsPanel({ onClose }: { onClose: () => void }) {
+interface SettingsPanelProps {
+  onClose: () => void;
+  installPrompt: any;
+  onInstallPromptUsed: () => void;
+}
+
+function SettingsPanel({ onClose, installPrompt, onInstallPromptUsed }: SettingsPanelProps) {
   const { supported, permission, subscribed, busy, enable, disable } = usePushSubscription();
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState('');
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isInstalled = window.matchMedia('(display-mode: standalone)').matches || !!(window.navigator as any).standalone;
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -137,6 +145,33 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       </div>
+
+      {/* Install */}
+      {!isInstalled && (
+        <div style={divider}>
+          <div style={sectionLabel}>Install</div>
+          {installPrompt ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Add to home screen</span>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={async () => {
+                  installPrompt.prompt();
+                  const { outcome } = await installPrompt.userChoice;
+                  if (outcome === 'accepted') onInstallPromptUsed();
+                }}
+              >
+                Install
+              </button>
+            </div>
+          ) : isIOS ? (
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+              Tap <strong style={{ color: 'var(--text-primary)' }}>Share</strong> then{' '}
+              <strong style={{ color: 'var(--text-primary)' }}>Add to Home Screen</strong>
+            </p>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
@@ -146,8 +181,18 @@ function MainApp() {
   const [activeTab, setActiveTab] = useState<Tab>('games');
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
   const isOnline = useOnlineSync();
   const updateAvailable = useUpdateAvailable();
+
+  useEffect(() => {
+    function handler(e: Event) {
+      e.preventDefault();
+      setInstallPrompt(e);
+    }
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
 
   const managerMode = isManager && viewMode !== 'player';
 
@@ -217,7 +262,13 @@ function MainApp() {
               >
                 {initials(user!.name)}
               </button>
-              {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+              {showSettings && (
+                <SettingsPanel
+                  onClose={() => setShowSettings(false)}
+                  installPrompt={installPrompt}
+                  onInstallPromptUsed={() => setInstallPrompt(null)}
+                />
+              )}
             </div>
           </div>
         </header>
