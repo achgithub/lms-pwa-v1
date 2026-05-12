@@ -654,7 +654,7 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
           )}
 
           {/* ── Results Phase ── */}
-          {resultsPhase && !pendingAutoAssignments && !massEliminationState && (
+          {resultsPhase && !actingAsPlayer && !pendingAutoAssignments && !massEliminationState && (
             <div className="card">
               <div className="section-header">
                 <h3 className="card-title" style={{ marginBottom: 0 }}>
