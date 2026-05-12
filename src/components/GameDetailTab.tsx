@@ -505,8 +505,8 @@ export default function GameDetailTab({ gameId, onBack }: Props) {
                               )}
                             />
                             <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)' }}>{dateStr} {timeStr}</span>
-                              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>GW{f.matchday}</span>
+                              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)' }}>{dateStr} {timeStr}</span>
+                              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)' }}>GW{f.matchday}</span>
                               <span style={{ fontSize: 13, fontWeight: 500 }}>{f.homeTeamName} vs {f.awayTeamName}</span>
                             </span>
                           </label>
